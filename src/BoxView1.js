@@ -1,10 +1,26 @@
-import React, { useState } from 'react';
-import 'bootstrap/dist/css/bootstrap.min.css';
+import React, { useState } from "react";
+import "bootstrap/dist/css/bootstrap.min.css";
 
-const API_BASE = "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
+const API_BASE =
+  "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
-const blank = { description: '', supplier: '', cost: '', notes: '' };
-const blankAlt = { ...blank, used: false, isExistingAlt: false, alternateId: undefined }; // new alt
+// ✅ Added laborType / laborHours / laborCost
+const blank = {
+  description: "",
+  supplier: "",
+  cost: "",
+  notes: "",
+  laborType: "",
+  laborHours: "",
+  laborCost: "",
+};
+
+const blankAlt = {
+  ...blank,
+  used: false,
+  isExistingAlt: false,
+  alternateId: undefined,
+};
 
 // Reusable row (Primary or Alternate)
 function GridRow({
@@ -22,6 +38,7 @@ function GridRow({
       <div className="card-header d-flex justify-content-between align-items-center">
         <div className="d-flex align-items-center gap-3">
           <strong>{label}</strong>
+
           {showUsed && (
             <div className="form-check">
               <input
@@ -49,9 +66,12 @@ function GridRow({
         <table className="table table-sm align-middle mb-0">
           <thead>
             <tr>
-              <th style={{ width: '28%' }}>Description</th>
-              <th style={{ width: '22%' }}>Supplier</th>
-              <th style={{ width: '15%' }}>Cost</th>
+              <th style={{ width: "22%" }}>Description</th>
+              <th style={{ width: "16%" }}>Supplier</th>
+              <th style={{ width: "10%" }}>Cost</th>
+              <th style={{ width: "16%" }}>Labor Type</th>
+              <th style={{ width: "10%" }}>Hours</th>
+              <th style={{ width: "10%" }}>Labor Cost</th>
               <th>Notes</th>
             </tr>
           </thead>
@@ -62,19 +82,21 @@ function GridRow({
                   className="form-control"
                   type="text"
                   value={value.description}
-                  onChange={handle('description')}
+                  onChange={handle("description")}
                   placeholder="e.g., 20x20 air filter"
                 />
               </td>
+
               <td>
                 <input
                   className="form-control"
                   type="text"
                   value={value.supplier}
-                  onChange={handle('supplier')}
+                  onChange={handle("supplier")}
                   placeholder="e.g., ACME Supply"
                 />
               </td>
+
               <td>
                 <input
                   className="form-control"
@@ -82,16 +104,51 @@ function GridRow({
                   step="0.01"
                   min="0"
                   value={value.cost}
-                  onChange={handle('cost')}
+                  onChange={handle("cost")}
                   placeholder="0.00"
                 />
               </td>
+
+              <td>
+                <input
+                  className="form-control"
+                  type="text"
+                  value={value.laborType}
+                  onChange={handle("laborType")}
+                  placeholder="e.g., Install"
+                />
+              </td>
+
+              <td>
+                <input
+                  className="form-control"
+                  type="number"
+                  step="0.25"
+                  min="0"
+                  value={value.laborHours}
+                  onChange={handle("laborHours")}
+                  placeholder="0.00"
+                />
+              </td>
+
+              <td>
+                <input
+                  className="form-control"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={value.laborCost}
+                  onChange={handle("laborCost")}
+                  placeholder="0.00"
+                />
+              </td>
+
               <td>
                 <input
                   className="form-control"
                   type="text"
                   value={value.notes}
-                  onChange={handle('notes')}
+                  onChange={handle("notes")}
                   placeholder="Optional notes…"
                 />
               </td>
@@ -132,14 +189,16 @@ function Section({ idx, options, onChange, onRemoveSection }) {
             type="button"
             className="btn btn-sm btn-outline-secondary"
             onClick={() => setExpanded((v) => !v)}
-            title={expanded ? 'Hide alternates' : 'Show alternates'}
+            title={expanded ? "Hide alternates" : "Show alternates"}
             aria-expanded={expanded}
           >
-            {expanded ? '▾' : '▸'}
+            {expanded ? "▾" : "▸"}
           </button>
+
           <h6 className="mb-0">Item {idx + 1}</h6>
+
           <span className="text-muted small">
-            {Math.max(0, options.length - 1)} alternate{options.length - 1 === 1 ? '' : 's'}
+            {Math.max(0, options.length - 1)} alternate{options.length - 1 === 1 ? "" : "s"}
           </span>
         </div>
 
@@ -185,7 +244,7 @@ function Section({ idx, options, onChange, onRemoveSection }) {
             className="btn btn-primary btn-sm"
             onClick={addAlternate}
             disabled={options.length - 1 >= MAX_ALTS}
-            title={options.length - 1 >= MAX_ALTS ? 'Reached max alternates' : 'Add alternate'}
+            title={options.length - 1 >= MAX_ALTS ? "Reached max alternates" : "Add alternate"}
           >
             + Add Alternate
           </button>
@@ -200,7 +259,7 @@ export default function BoxView1({ number, onBack }) {
   const starter = [
     { ...blank, isExisting: false, equipmentId: undefined },
     { ...blankAlt },
-    { ...blankAlt }
+    { ...blankAlt },
   ];
 
   const [sections, setSections] = React.useState([]);
@@ -220,11 +279,14 @@ export default function BoxView1({ number, onBack }) {
 
             const primary = {
               description: r.Description ?? "",
-              supplier:    r.Supplier ?? "",
-              cost:        r.Cost ?? "",
-              notes:       r.Notes ?? "",
-              isExisting:  true,
-              equipmentId: equipmentId
+              supplier: r.Supplier ?? "",
+              cost: r.Cost ?? "",
+              notes: r.Notes ?? "",
+              laborType: r.LaborType ?? "",
+              laborHours: r.LaborHours ?? "",
+              laborCost: r.LaborCost ?? "",
+              isExisting: true,
+              equipmentId: equipmentId,
             };
 
             // Fetch alternates for this equipment
@@ -238,13 +300,16 @@ export default function BoxView1({ number, onBack }) {
                 const altRows = Array.isArray(altData?.sample) ? altData.sample : [];
 
                 alternates = altRows.map((a) => ({
-                  description:  a.Description ?? "",
-                  supplier:     a.Supplier ?? "",
-                  cost:         a.Cost ?? "",
-                  notes:        a.Notes ?? "",
-                  used:         Number(a.IsUsed) === 1,
+                  description: a.Description ?? "",
+                  supplier: a.Supplier ?? "",
+                  cost: a.Cost ?? "",
+                  notes: a.Notes ?? "",
+                  laborType: a.LaborType ?? "",
+                  laborHours: a.LaborHours ?? "",
+                  laborCost: a.LaborCost ?? "",
+                  used: Number(a.IsUsed) === 1,
                   isExistingAlt: true,
-                  alternateId:  a.AlternateId  // ⬅️ keep ID so we can PUT
+                  alternateId: a.AlternateId, // keep ID so we can PUT
                 }));
               }
             } catch (err) {
@@ -269,39 +334,53 @@ export default function BoxView1({ number, onBack }) {
     loadPrimariesAndAlternates();
   }, []);
 
-  const addSection = () =>
-    setSections((s) => [...s, starter.map(o => ({ ...o }))]);
+  const addSection = () => setSections((s) => [...s, starter.map((o) => ({ ...o }))]);
 
   const updateSection = (sectionIndex, nextOptions) =>
     setSections((s) => s.map((opts, i) => (i === sectionIndex ? nextOptions : opts)));
 
-  const removeSection = (sectionIndex) =>
-    setSections((s) => s.filter((_, i) => i !== sectionIndex));
+  const removeSection = (sectionIndex) => setSections((s) => s.filter((_, i) => i !== sectionIndex));
 
   function isEmptySlot(item) {
     return (
       (!item.description || item.description.trim() === "") &&
       (!item.supplier || item.supplier.trim() === "") &&
       (!item.cost || item.cost === "" || item.cost == null) &&
-      (!item.notes || item.notes.trim() === "")
+      (!item.notes || item.notes.trim() === "") &&
+      (!item.laborType || item.laborType.trim() === "") &&
+      (!item.laborHours || item.laborHours === "" || item.laborHours == null) &&
+      (!item.laborCost || item.laborCost === "" || item.laborCost == null)
     );
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Code', number, '-> payload:', sections);
+    console.log("Code", number, "-> payload:", sections);
 
     const isEmpty = (it) =>
       (!it?.description || !it.description.trim()) &&
       (!it?.supplier || !it.supplier.trim()) &&
       (!it?.cost && it?.cost !== 0) &&
-      (!it?.notes || !it.notes.trim());
+      (!it?.notes || !it.notes.trim()) &&
+      (!it?.laborType || !it.laborType.trim()) &&
+      (!it?.laborHours && it?.laborHours !== 0) &&
+      (!it?.laborCost && it?.laborCost !== 0);
+
+    const toPayload = (x) => ({
+      Description: String(x.description ?? ""),
+      Supplier: String(x.supplier ?? ""),
+      Cost: String(x.cost ?? ""),
+      Notes: String(x.notes ?? ""),
+      LaborType: String(x.laborType ?? ""),
+      LaborHours: x.laborHours === "" || x.laborHours == null ? null : Number(x.laborHours),
+      LaborCost: x.laborCost === "" || x.laborCost == null ? null : Number(x.laborCost),
+    });
 
     try {
       for (const row of sections) {
         const primary = row?.[0];
         if (!primary || isEmpty(primary)) {
-          console.warn('Skipping empty primary row');
+          console.warn("Skipping empty primary row");
           continue;
         }
 
@@ -313,16 +392,12 @@ export default function BoxView1({ number, onBack }) {
           const equipUpdateRes = await fetch(
             `${API_BASE}/equipment/${encodeURIComponent(equipmentId)}`,
             {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                Description: String(primary.description ?? ''),
-                Supplier:    String(primary.supplier ?? ''),
-                Cost:        String(primary.cost ?? ''),
-                Notes:       String(primary.notes ?? '')
-              })
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(toPayload(primary)),
             }
           );
+
           const equipUpdateData = await equipUpdateRes.json().catch(() => ({}));
           if (!equipUpdateRes.ok) {
             throw new Error(`Equipment UPDATE failed: ${JSON.stringify(equipUpdateData)}`);
@@ -339,17 +414,15 @@ export default function BoxView1({ number, onBack }) {
               const altUpdateRes = await fetch(
                 `${API_BASE}/equipment/alternates/${encodeURIComponent(alt.alternateId)}`,
                 {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
-                    Description: String(alt.description ?? ''),
-                    Supplier:    String(alt.supplier ?? ''),
-                    Cost:        String(alt.cost ?? ''),
-                    Notes:       String(alt.notes ?? ''),
-                    IsUsed:      alt.used ? 1 : 0
-                  })
+                    ...toPayload(alt),
+                    IsUsed: alt.used ? 1 : 0,
+                  }),
                 }
               );
+
               const altUpdateData = await altUpdateRes.json().catch(() => ({}));
               if (!altUpdateRes.ok) {
                 throw new Error(`Alternate UPDATE failed: ${JSON.stringify(altUpdateData)}`);
@@ -360,69 +433,59 @@ export default function BoxView1({ number, onBack }) {
             // New alternate → POST
             if (!alt.isExistingAlt) {
               const altRes = await fetch(`${API_BASE}/equipment/alternates`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   EquipmentId: equipmentId,
-                  Description: String(alt.description ?? ''),
-                  Supplier:    String(alt.supplier ?? ''),
-                  Cost:        String(alt.cost ?? ''),
-                  Notes:       String(alt.notes ?? ''),
-                  IsUsed:      alt.used ? 1 : 0
-                })
+                  ...toPayload(alt),
+                  IsUsed: alt.used ? 1 : 0,
+                }),
               });
+
               const altData = await altRes.json().catch(() => ({}));
               if (!altRes.ok) throw new Error(`Alternate POST failed: ${JSON.stringify(altData)}`);
             }
           }
 
-          // Done with this row
           continue;
         }
 
         // 🔹 CASE 2: Brand-new equipment (create + its alternates)
         const equipRes = await fetch(`${API_BASE}/equipment`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            Description: String(primary.description ?? ''),
-            Supplier:    String(primary.supplier ?? ''),
-            Cost:        String(primary.cost ?? ''),
-            Notes:       String(primary.notes ?? '')
-          })
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(toPayload(primary)),
         });
+
         const equipData = await equipRes.json().catch(() => ({}));
         if (!equipRes.ok) throw new Error(`Equipment POST failed: ${JSON.stringify(equipData)}`);
 
-        const equipmentId =
-          equipData.EquipmentId || equipData.equipmentId || equipData.id;
-        if (!equipmentId) throw new Error('EquipmentId missing from equipment POST response');
+        const equipmentId = equipData.EquipmentId || equipData.equipmentId || equipData.id;
+        if (!equipmentId) throw new Error("EquipmentId missing from equipment POST response");
 
         const alts = row.slice(1);
         for (const alt of alts) {
           if (!alt || isEmpty(alt)) continue;
 
           const altRes = await fetch(`${API_BASE}/equipment/alternates`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               EquipmentId: equipmentId,
-              Description: String(alt.description ?? ''),
-              Supplier:    String(alt.supplier ?? ''),
-              Cost:        String(alt.cost ?? ''),
-              Notes:       String(alt.notes ?? ''),
-              IsUsed:      alt.used ? 1 : 0
-            })
+              ...toPayload(alt),
+              IsUsed: alt.used ? 1 : 0,
+            }),
           });
+
           const altData = await altRes.json().catch(() => ({}));
           if (!altRes.ok) throw new Error(`Alternate POST failed: ${JSON.stringify(altData)}`);
         }
       }
 
-      alert('✅ Submitted changes (updated existing + created new items)!');
+      alert("✅ Submitted changes (updated existing + created new items)!");
     } catch (err) {
-      console.error('❌ Submit error:', err);
-      alert('❌ Submit failed: ' + (err.message || err));
+      console.error("❌ Submit error:", err);
+      alert("❌ Submit failed: " + (err.message || err));
     }
   };
 
@@ -446,6 +509,7 @@ export default function BoxView1({ number, onBack }) {
           <button type="button" className="btn btn-outline-primary" onClick={addSection}>
             + Add Item (starts with 2 alts)
           </button>
+
           <button type="submit" className="btn btn-secondary">
             Submit changes
           </button>
@@ -458,3 +522,4 @@ export default function BoxView1({ number, onBack }) {
     </div>
   );
 }
+

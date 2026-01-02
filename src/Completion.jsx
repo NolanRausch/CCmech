@@ -9,7 +9,7 @@ export default function DbTestViewer() {
   const [deletingId, setDeletingId] = useState(null);
   const [selected, setSelected] = useState(null);
 
-  const API_BASE = "http://localhost:7071/api";
+  const API_BASE = "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
   const parseCost = (val) => {
     const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
-const API_BASE = "http://localhost:7071/api";
+const API_BASE = "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
 const blank = { description: '', supplier: '', cost: '', notes: '' };
 const blankAlt = { ...blank, used: false, isExistingAlt: false, alternateId: undefined }; // new alt

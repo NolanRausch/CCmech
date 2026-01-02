@@ -1,37 +1,51 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxView1 from "./BoxView1";
 
 export default function DbTestViewer() {
   // 🔧 All hooks at the top
-  const [rows, setRows] = useState([]);           // each row gets .Alternates: []
+  const [rows, setRows] = useState([]); // each row gets .Alternates: []
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [selected, setSelected] = useState(null);
 
-  const API_BASE = "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
+  const API_BASE =
+    "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
-  // Safe cost parser for strings like "250.00", "$250", etc.
-  const parseCost = (val) => {
+  // Safe number parser for strings like "250.00", "$250", etc.
+  const parseNum = (val) => {
     const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
     return isNaN(n) ? 0 : n;
   };
 
-  async function fetchAlternates(equipmentId) {
-    try {
-      const res = await fetch(`${API_BASE}/db-test-alternate/${encodeURIComponent(equipmentId)}`);
-      if (!res.ok) throw new Error(`Alt HTTP ${res.status}`);
-      const json = await res.json();
-      const list = Array.isArray(json?.sample) ? json.sample : [];
-      return list;
-    } catch (e) {
-      console.warn("Alternates fetch failed for", equipmentId, e);
-      return [];
-    }
-  }
+  const fmtMoney = (n) => `$${parseNum(n).toFixed(2)}`;
+  const fmtHours = (n) => parseNum(n).toFixed(2);
 
-  async function fetchRows() {
+  const pickUsedOrPrimary = (primary, alternates = []) => {
+    const usedAlt = alternates.find((a) => Number(a?.IsUsed) === 1);
+    return usedAlt || primary;
+  };
+
+  const fetchAlternates = useCallback(
+    async (equipmentId) => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/db-test-alternate/${encodeURIComponent(equipmentId)}`
+        );
+        if (!res.ok) throw new Error(`Alt HTTP ${res.status}`);
+        const json = await res.json();
+        const list = Array.isArray(json?.sample) ? json.sample : [];
+        return list;
+      } catch (e) {
+        console.warn("Alternates fetch failed for", equipmentId, e);
+        return [];
+      }
+    },
+    [API_BASE]
+  );
+
+  const fetchRows = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -46,7 +60,7 @@ export default function DbTestViewer() {
       const withAlternates = await Promise.all(
         list.map(async (r) => {
           const alts = await fetchAlternates(r.EquipmentId);
-          return { ...r, Alternates: alts, _expand: false }; // _expand for UI toggle if you want later
+          return { ...r, Alternates: alts, _expand: false }; // _expand for UI toggle
         })
       );
 
@@ -56,11 +70,11 @@ export default function DbTestViewer() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [API_BASE, fetchAlternates]);
 
   useEffect(() => {
     fetchRows();
-  }, []);
+  }, [fetchRows]);
 
   // DELETE one row by EquipmentId (backend: DELETE /api/equipment/{id})
   const handleDelete = async (equipmentId) => {
@@ -71,9 +85,16 @@ export default function DbTestViewer() {
 
       const text = await res.text();
       let data;
-      try { data = JSON.parse(text); } catch { data = text; }
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
 
-      if (!res.ok) throw new Error(typeof data === "string" ? data : data?.error || `HTTP ${res.status}`);
+      if (!res.ok)
+        throw new Error(
+          typeof data === "string" ? data : data?.error || `HTTP ${res.status}`
+        );
 
       // Optimistically remove from UI
       setRows((prev) => prev.filter((r) => r.EquipmentId !== equipmentId));
@@ -85,28 +106,31 @@ export default function DbTestViewer() {
     }
   };
 
-  // Toggle expand (if you want to collapse/expand alternates)
+  // Toggle expand
   const toggleExpand = (id) =>
     setRows((prev) =>
       prev.map((r) => (r.EquipmentId === id ? { ...r, _expand: !r._expand } : r))
     );
 
-  // Total cost = primary unless an alternate has IsUsed === 1
-  const totalCost = rows.reduce((sum, r) => {
-    const primaryCost = parseCost(r?.Cost);
+  // Totals: use alternate values when IsUsed === 1
+  const totals = useMemo(() => {
+    return rows.reduce(
+      (acc, r) => {
+        const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
 
-    // pick alternates with IsUsed === 1
-    const usedAlt = r?.Alternates?.find(a => Number(a?.IsUsed) === 1);
+        acc.materialCost += parseNum(chosen?.Cost);
+        acc.laborHours += parseNum(chosen?.LaborHours);
+        acc.laborCost += parseNum(chosen?.LaborCost);
 
-    // if used alternate exists → use its cost instead of primary
-    const costToUse = usedAlt ? parseCost(usedAlt.Cost) : primaryCost;
-
-    return sum + costToUse;
-  }, 0);
+        return acc;
+      },
+      { materialCost: 0, laborHours: 0, laborCost: 0 }
+    );
+  }, [rows]);
 
   // Early returns AFTER hooks
   if (loading) return <p className="p-3">Loading...</p>;
-  if (error)   return <p className="p-3 text-danger">Error: {error}</p>;
+  if (error) return <p className="p-3 text-danger">Error: {error}</p>;
 
   // Swap to BoxView1 and refresh on back
   if (selected === 1000) {
@@ -115,7 +139,7 @@ export default function DbTestViewer() {
         number={selected}
         onBack={() => {
           setSelected(null);
-          fetchRows();   // ✅ refresh equipment (and alternates) after returning
+          fetchRows(); // ✅ refresh equipment (and alternates) after returning
         }}
       />
     );
@@ -125,7 +149,10 @@ export default function DbTestViewer() {
     <div className="container py-4">
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h2 className="mb-0">Equipment</h2>
-        <button className="btn btn-outline-secondary btn-sm" onClick={() => setSelected(1000)}>
+        <button
+          className="btn btn-outline-secondary btn-sm"
+          onClick={() => setSelected(1000)}
+        >
           Edit
         </button>
       </div>
@@ -147,7 +174,9 @@ export default function DbTestViewer() {
               <th>Supplier</th>
               <th style={{ width: "8rem" }}>Cost</th>
               <th>Notes</th>
-              {/* Equipment ID column removed */}
+              <th style={{ width: "9rem" }}>Labor Type</th>
+              <th style={{ width: "7rem" }}>Hours</th>
+              <th style={{ width: "8rem" }}>Labor Cost</th>
               <th style={{ width: "10rem" }}>Alternates</th>
               <th style={{ width: "7rem" }}>Actions</th>
             </tr>
@@ -156,12 +185,14 @@ export default function DbTestViewer() {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                {/* 7 columns now */}
-                <td colSpan={7} className="text-center py-4">No records found</td>
+                <td colSpan={10} className="text-center py-4">
+                  No records found
+                </td>
               </tr>
             ) : (
               rows.map((r, i) => {
-                const hasUsedAlt = r?.Alternates?.some(a => Number(a?.IsUsed) === 1);
+                const hasUsedAlt = r?.Alternates?.some((a) => Number(a?.IsUsed) === 1);
+                const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
 
                 return (
                   <>
@@ -177,20 +208,26 @@ export default function DbTestViewer() {
                           </span>
                         )}
                       </td>
-                      <td>{r.Description}</td>
-                      <td>{r.Supplier}</td>
-                      <td>${parseCost(r.Cost).toFixed(2)}</td>
-                      <td>{r.Notes}</td>
-                      {/* EquipmentId cell removed from UI */}
+                      <td>{chosen?.Description}</td>
+                      <td>{chosen?.Supplier}</td>
+                      <td>{fmtMoney(chosen?.Cost)}</td>
+                      <td>{chosen?.Notes}</td>
+                      <td>{chosen?.LaborType || ""}</td>
+                      <td>{fmtHours(chosen?.LaborHours)}</td>
+                      <td>{fmtMoney(chosen?.LaborCost)}</td>
+
                       <td>
                         <button
                           className="btn btn-sm btn-outline-primary"
                           onClick={() => toggleExpand(r.EquipmentId)}
                           title="Show/Hide alternates"
                         >
-                          {r._expand ? `Hide (${r.Alternates?.length || 0})` : `Show (${r.Alternates?.length || 0})`}
+                          {r._expand
+                            ? `Hide (${r.Alternates?.length || 0})`
+                            : `Show (${r.Alternates?.length || 0})`}
                         </button>
                       </td>
+
                       <td>
                         <button
                           className="btn btn-sm btn-outline-danger"
@@ -203,28 +240,35 @@ export default function DbTestViewer() {
                       </td>
                     </tr>
 
-                    {r._expand && (r.Alternates?.length ? (
-                      r.Alternates.map((a, ai) => (
-                        <tr key={`${r.EquipmentId}-alt-${ai}`} className="table-light">
+                    {r._expand &&
+                      (r.Alternates?.length ? (
+                        r.Alternates.map((a, ai) => (
+                          <tr key={`${r.EquipmentId}-alt-${ai}`} className="table-light">
+                            <td></td>
+                            <td className="ps-4">
+                              <span className="badge text-bg-secondary me-2">ALT</span>
+                              {a.Description}
+                              {Number(a?.IsUsed) === 1 && (
+                                <span className="ms-2 badge text-bg-success">USED</span>
+                              )}
+                            </td>
+                            <td>{a.Supplier}</td>
+                            <td>{fmtMoney(a.Cost)}</td>
+                            <td>{a.Notes}</td>
+                            <td>{a.LaborType || ""}</td>
+                            <td>{fmtHours(a.LaborHours)}</td>
+                            <td>{fmtMoney(a.LaborCost)}</td>
+                            <td colSpan={2}></td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr key={`${r.EquipmentId}-noalts`} className="table-light">
                           <td></td>
-                          <td className="ps-4">
-                            <span className="badge text-bg-secondary me-2">ALT</span>
-                            {a.Description}
+                          <td className="ps-4 text-muted" colSpan={9}>
+                            No alternates
                           </td>
-                          <td>{a.Supplier}</td>
-                          <td>${parseCost(a.Cost).toFixed(2)}</td>
-                          <td>{a.Notes}</td>
-                          {/* EquipmentId for alternates removed from UI */}
-                          <td colSpan={2}></td>
                         </tr>
-                      ))
-                    ) : (
-                      <tr key={`${r.EquipmentId}-noalts`} className="table-light">
-                        <td></td>
-                        {/* 6 remaining columns (total 7) */}
-                        <td className="ps-4 text-muted" colSpan={6}>No alternates</td>
-                      </tr>
-                    ))}
+                      ))}
                   </>
                 );
               })
@@ -233,17 +277,21 @@ export default function DbTestViewer() {
 
           <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
             <tr>
-              <th colSpan={3}>Total Cost (alt-adjusted)</th>
-              <th>${totalCost.toFixed(2)}</th>
-              {/* 3 remaining columns to make 7 total */}
-              <th colSpan={3}></th>
+              <th colSpan={3}>Totals (alt-adjusted)</th>
+              <th>{fmtMoney(totals.materialCost)}</th>
+              <th></th>
+              <th></th>
+              <th>{fmtHours(totals.laborHours)}</th>
+              <th>{fmtMoney(totals.laborCost)}</th>
+              <th colSpan={2}></th>
             </tr>
           </tfoot>
         </table>
       </div>
 
+      
+
       <h5 className="mt-3">Code Number 1000</h5>
     </div>
   );
 }
-
