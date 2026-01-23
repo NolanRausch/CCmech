@@ -135,12 +135,12 @@ export default function DbTestViewer() {
   return (
     <div className="container py-4">
       <div className="d-flex align-items-center justify-content-between mb-3">
-        <h2 className="mb-0">Demo</h2>
+        <h5 className="mb-0">Prep: Demolition, Deliveries, Trucking, Fencing, Eng Fees, Refrigerant Recovery</h5>
         <button
           className="btn btn-outline-secondary btn-sm"
           onClick={() => setSelected(1000)}
         >
-          Edit
+          Input
         </button>
       </div>
 
@@ -257,7 +257,7 @@ export default function DbTestViewer() {
         </table>
       </div>
 
-      <h5 className="mt-3">Code Number 2000</h5>
+    
     </div>
   );
 }

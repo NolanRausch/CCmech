@@ -12,7 +12,13 @@ import Piping from "./Piping";
 import Completion from "./Completion";
 import MLabor from "./MLabor";
 import PLabor from "./PLabor";
-
+import Labor from "./Labor";
+import Labor2 from "./Labor2";
+import Labor3 from "./Labor3";
+import Labor4 from "./Labor4";
+import Labor5 from "./Labor5";
+import Labor6 from "./Labor6";
+import Labor7 from "./Labor7";
 function Home() {
   const numbers = [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000];
 
@@ -49,111 +55,51 @@ function Home() {
       <div>
   
       <DbTestViewer />
-      <div className="d-flex flex-wrap gap-2 mb-4">
- 
-
-  <button type="button" className="btn btn-danger" onClick={handleClearAll}>
-    🗑 Clear All Equipment
-  </button>
-</div>
+     
+    
 
     </div>
+    <div><Labor/></div>
         <div>
   
       <Demo />
-      <div className="d-flex flex-wrap gap-2 mb-4">
- 
-
-  <button type="button" className="btn btn-danger" onClick={handleClearAll}>
-    🗑 Clear All Demo
-  </button>
-</div>
+     
 
     </div>
+    <div><Labor2/></div>
      <div>
   
       <Rough />
-      <div className="d-flex flex-wrap gap-2 mb-4">
- 
-
-  <button type="button" className="btn btn-danger" onClick={handleClearAll}>
-    🗑 Clear All Rough
-  </button>
-</div>
-
+     
     </div>
+     <div><Labor3/></div>
+     
     <div>
   
       <AirDistribution />
-      <div className="d-flex flex-wrap gap-2 mb-4">
- 
-
-  <button type="button" className="btn btn-danger" onClick={handleClearAll}>
-    🗑 Clear All Rough
-  </button>
-</div>
+     
 
     </div>
+     <div><Labor4/></div>
      <div>
   
       <Electrical />
-      <div className="d-flex flex-wrap gap-2 mb-4">
- 
-
-  <button type="button" className="btn btn-danger" onClick={handleClearAll}>
-    🗑 Clear All Rough
-  </button>
-</div>
+    
 
     </div>
+     <div><Labor5/></div>
      <div>
   
       <Piping />
-      <div className="d-flex flex-wrap gap-2 mb-4">
- 
-
-  <button type="button" className="btn btn-danger" onClick={handleClearAll}>
-    🗑 Clear All Rough
-  </button>
-</div>
-
+      
     </div>
+         <div><Labor6/></div>
     <div>
   
       <Completion />
-      <div className="d-flex flex-wrap gap-2 mb-4">
- 
-
-  <button type="button" className="btn btn-danger" onClick={handleClearAll}>
-    🗑 Clear All Rough
-  </button>
-</div>
-
+    
     </div>
-     <div>
-  
-      <MLabor />
-      <div className="d-flex flex-wrap gap-2 mb-4">
- 
-
-  <button type="button" className="btn btn-danger" onClick={handleClearAll}>
-    🗑 Clear All Rough
-  </button>
-</div>
-
-    </div>
-     <div>
-  
-      <PLabor />
-      <div className="d-flex flex-wrap gap-2 mb-4">
- 
-
-  <button type="button" className="btn btn-danger" onClick={handleClearAll}>
-    🗑 Clear All Rough
-  </button>
-</div>
-
-    </div>
+     <div><Labor7/></div>
     </div>
   );
 }

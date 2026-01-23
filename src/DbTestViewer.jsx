@@ -20,7 +20,6 @@ export default function DbTestViewer() {
   };
 
   const fmtMoney = (n) => `$${parseNum(n).toFixed(2)}`;
-  const fmtHours = (n) => parseNum(n).toFixed(2);
 
   const pickUsedOrPrimary = (primary, alternates = []) => {
     const usedAlt = alternates.find((a) => Number(a?.IsUsed) === 1);
@@ -112,19 +111,15 @@ export default function DbTestViewer() {
       prev.map((r) => (r.EquipmentId === id ? { ...r, _expand: !r._expand } : r))
     );
 
-  // Totals: use alternate values when IsUsed === 1
+  // Totals: material cost only (labor fields removed)
   const totals = useMemo(() => {
     return rows.reduce(
       (acc, r) => {
         const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
-
         acc.materialCost += parseNum(chosen?.Cost);
-        acc.laborHours += parseNum(chosen?.LaborHours);
-        acc.laborCost += parseNum(chosen?.LaborCost);
-
         return acc;
       },
-      { materialCost: 0, laborHours: 0, laborCost: 0 }
+      { materialCost: 0 }
     );
   }, [rows]);
 
@@ -148,12 +143,12 @@ export default function DbTestViewer() {
   return (
     <div className="container py-4">
       <div className="d-flex align-items-center justify-content-between mb-3">
-        <h2 className="mb-0">Equipment</h2>
+        <h5 className="mb-0">Equipment: RTU's, Chillers, Boilers, Pumps, Towers, VRF, Splits</h5>
         <button
           className="btn btn-outline-secondary btn-sm"
           onClick={() => setSelected(1000)}
         >
-          Edit
+          Input
         </button>
       </div>
 
@@ -174,9 +169,6 @@ export default function DbTestViewer() {
               <th>Supplier</th>
               <th style={{ width: "8rem" }}>Cost</th>
               <th>Notes</th>
-              <th style={{ width: "9rem" }}>Labor Type</th>
-              <th style={{ width: "7rem" }}>Hours</th>
-              <th style={{ width: "8rem" }}>Labor Cost</th>
               <th style={{ width: "10rem" }}>Alternates</th>
               <th style={{ width: "7rem" }}>Actions</th>
             </tr>
@@ -185,7 +177,7 @@ export default function DbTestViewer() {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={10} className="text-center py-4">
+                <td colSpan={7} className="text-center py-4">
                   No records found
                 </td>
               </tr>
@@ -212,9 +204,6 @@ export default function DbTestViewer() {
                       <td>{chosen?.Supplier}</td>
                       <td>{fmtMoney(chosen?.Cost)}</td>
                       <td>{chosen?.Notes}</td>
-                      <td>{chosen?.LaborType || ""}</td>
-                      <td>{fmtHours(chosen?.LaborHours)}</td>
-                      <td>{fmtMoney(chosen?.LaborCost)}</td>
 
                       <td>
                         <button
@@ -255,16 +244,13 @@ export default function DbTestViewer() {
                             <td>{a.Supplier}</td>
                             <td>{fmtMoney(a.Cost)}</td>
                             <td>{a.Notes}</td>
-                            <td>{a.LaborType || ""}</td>
-                            <td>{fmtHours(a.LaborHours)}</td>
-                            <td>{fmtMoney(a.LaborCost)}</td>
                             <td colSpan={2}></td>
                           </tr>
                         ))
                       ) : (
                         <tr key={`${r.EquipmentId}-noalts`} className="table-light">
                           <td></td>
-                          <td className="ps-4 text-muted" colSpan={9}>
+                          <td className="ps-4 text-muted" colSpan={6}>
                             No alternates
                           </td>
                         </tr>
@@ -279,19 +265,14 @@ export default function DbTestViewer() {
             <tr>
               <th colSpan={3}>Totals (alt-adjusted)</th>
               <th>{fmtMoney(totals.materialCost)}</th>
-              <th></th>
-              <th></th>
-              <th>{fmtHours(totals.laborHours)}</th>
-              <th>{fmtMoney(totals.laborCost)}</th>
-              <th colSpan={2}></th>
+              <th colSpan={3}></th>
             </tr>
           </tfoot>
         </table>
       </div>
 
       
-
-      <h5 className="mt-3">Code Number 1000</h5>
     </div>
   );
 }
+

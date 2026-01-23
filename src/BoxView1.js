@@ -4,15 +4,12 @@ import "bootstrap/dist/css/bootstrap.min.css";
 const API_BASE =
   "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
-// ✅ Added laborType / laborHours / laborCost
+// ✅ labor fields REMOVED
 const blank = {
   description: "",
   supplier: "",
   cost: "",
   notes: "",
-  laborType: "",
-  laborHours: "",
-  laborCost: "",
 };
 
 const blankAlt = {
@@ -66,12 +63,9 @@ function GridRow({
         <table className="table table-sm align-middle mb-0">
           <thead>
             <tr>
-              <th style={{ width: "22%" }}>Description</th>
-              <th style={{ width: "16%" }}>Supplier</th>
-              <th style={{ width: "10%" }}>Cost</th>
-              <th style={{ width: "16%" }}>Labor Type</th>
-              <th style={{ width: "10%" }}>Hours</th>
-              <th style={{ width: "10%" }}>Labor Cost</th>
+              <th style={{ width: "28%" }}>Description</th>
+              <th style={{ width: "20%" }}>Supplier</th>
+              <th style={{ width: "12%" }}>Cost</th>
               <th>Notes</th>
             </tr>
           </thead>
@@ -105,40 +99,6 @@ function GridRow({
                   min="0"
                   value={value.cost}
                   onChange={handle("cost")}
-                  placeholder="0.00"
-                />
-              </td>
-
-              <td>
-                <input
-                  className="form-control"
-                  type="text"
-                  value={value.laborType}
-                  onChange={handle("laborType")}
-                  placeholder="e.g., Install"
-                />
-              </td>
-
-              <td>
-                <input
-                  className="form-control"
-                  type="number"
-                  step="0.25"
-                  min="0"
-                  value={value.laborHours}
-                  onChange={handle("laborHours")}
-                  placeholder="0.00"
-                />
-              </td>
-
-              <td>
-                <input
-                  className="form-control"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={value.laborCost}
-                  onChange={handle("laborCost")}
                   placeholder="0.00"
                 />
               </td>
@@ -282,9 +242,6 @@ export default function BoxView1({ number, onBack }) {
               supplier: r.Supplier ?? "",
               cost: r.Cost ?? "",
               notes: r.Notes ?? "",
-              laborType: r.LaborType ?? "",
-              laborHours: r.LaborHours ?? "",
-              laborCost: r.LaborCost ?? "",
               isExisting: true,
               equipmentId: equipmentId,
             };
@@ -304,9 +261,6 @@ export default function BoxView1({ number, onBack }) {
                   supplier: a.Supplier ?? "",
                   cost: a.Cost ?? "",
                   notes: a.Notes ?? "",
-                  laborType: a.LaborType ?? "",
-                  laborHours: a.LaborHours ?? "",
-                  laborCost: a.LaborCost ?? "",
                   used: Number(a.IsUsed) === 1,
                   isExistingAlt: true,
                   alternateId: a.AlternateId, // keep ID so we can PUT
@@ -346,10 +300,7 @@ export default function BoxView1({ number, onBack }) {
       (!item.description || item.description.trim() === "") &&
       (!item.supplier || item.supplier.trim() === "") &&
       (!item.cost || item.cost === "" || item.cost == null) &&
-      (!item.notes || item.notes.trim() === "") &&
-      (!item.laborType || item.laborType.trim() === "") &&
-      (!item.laborHours || item.laborHours === "" || item.laborHours == null) &&
-      (!item.laborCost || item.laborCost === "" || item.laborCost == null)
+      (!item.notes || item.notes.trim() === "")
     );
   }
 
@@ -361,19 +312,13 @@ export default function BoxView1({ number, onBack }) {
       (!it?.description || !it.description.trim()) &&
       (!it?.supplier || !it.supplier.trim()) &&
       (!it?.cost && it?.cost !== 0) &&
-      (!it?.notes || !it.notes.trim()) &&
-      (!it?.laborType || !it.laborType.trim()) &&
-      (!it?.laborHours && it?.laborHours !== 0) &&
-      (!it?.laborCost && it?.laborCost !== 0);
+      (!it?.notes || !it.notes.trim());
 
     const toPayload = (x) => ({
       Description: String(x.description ?? ""),
       Supplier: String(x.supplier ?? ""),
       Cost: String(x.cost ?? ""),
       Notes: String(x.notes ?? ""),
-      LaborType: String(x.laborType ?? ""),
-      LaborHours: x.laborHours === "" || x.laborHours == null ? null : Number(x.laborHours),
-      LaborCost: x.laborCost === "" || x.laborCost == null ? null : Number(x.laborCost),
     });
 
     try {
@@ -522,4 +467,3 @@ export default function BoxView1({ number, onBack }) {
     </div>
   );
 }
-
