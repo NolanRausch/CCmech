@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxViewLabor from "./BoxViewLabor"; // ✅ make this editor use /labor endpoints
 
-export default function LaborViewer() {
+export default function LaborViewer({ onTotalsChange }) {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -51,6 +51,7 @@ export default function LaborViewer() {
 
   useEffect(() => {
     fetchRows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ✅ DELETE one row by LaborId
@@ -85,16 +86,43 @@ export default function LaborViewer() {
     }
   };
 
+  // ✅ totals + grouped totals by LaborType
   const totals = useMemo(() => {
-    return rows.reduce(
-      (acc, r) => {
-        acc.laborHours += parseNum(r?.LaborHours);
-        acc.laborCost += parseNum(r?.LaborCost);
-        return acc;
-      },
-      { laborHours: 0, laborCost: 0 }
-    );
+    const acc = {
+      laborHours: 0,
+      laborCost: 0,
+      byType: {}, // { "Pipefitter": { hours, cost }, ... }
+    };
+
+    for (const r of rows) {
+      const hours = parseNum(r?.LaborHours);
+      const cost = parseNum(r?.LaborCost);
+
+      acc.laborHours += hours;
+      acc.laborCost += cost;
+
+      const typeRaw = String(r?.LaborType ?? "").trim();
+      const type = typeRaw || "Uncategorized";
+
+      if (!acc.byType[type]) acc.byType[type] = { hours: 0, cost: 0 };
+      acc.byType[type].hours += hours;
+      acc.byType[type].cost += cost;
+    }
+
+    return acc;
   }, [rows]);
+
+  // ✅ Report totals up to Home (send OBJECT so Home can merge by labor type later)
+  useEffect(() => {
+    if (typeof onTotalsChange === "function") {
+      onTotalsChange({
+        code: CODE_NUMBER,
+        cost: totals.laborCost,
+        hours: totals.laborHours,
+        byType: totals.byType,
+      });
+    }
+  }, [totals, onTotalsChange]);
 
   if (loading) return <p className="p-3">Loading...</p>;
   if (error) return <p className="p-3 text-danger">Error: {error}</p>;
@@ -112,6 +140,11 @@ export default function LaborViewer() {
     );
   }
 
+  // for display: sort types by cost desc
+  const sortedTypes = Object.entries(totals.byType).sort(
+    (a, b) => (b[1]?.cost || 0) - (a[1]?.cost || 0)
+  );
+
   return (
     <div className="container py-4">
       <div className="d-flex align-items-center justify-content-between mb-3">
@@ -124,6 +157,46 @@ export default function LaborViewer() {
         </button>
       </div>
 
+      {/* ✅ Totals by Labor Type */}
+      <div className="card mb-3">
+        <div className="card-body">
+          <div className="fw-semibold mb-2">Totals by Labor Type</div>
+
+          {sortedTypes.length === 0 ? (
+            <div className="text-muted">No labor types found</div>
+          ) : (
+            <div className="table-responsive">
+              <table className="table table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th>Labor Type</th>
+                    <th style={{ width: "8rem" }}>Hours</th>
+                    <th style={{ width: "10rem" }}>Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedTypes.map(([type, v]) => (
+                    <tr key={type}>
+                      <td>{type}</td>
+                      <td>{fmtHours(v.hours)}</td>
+                      <td>{fmtMoney(v.cost)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="table-secondary">
+                    <th>Total</th>
+                    <th>{fmtHours(totals.laborHours)}</th>
+                    <th>{fmtMoney(totals.laborCost)}</th>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Raw rows table (unchanged) */}
       <div
         className="table-responsive"
         style={{

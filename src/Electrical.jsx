@@ -1,44 +1,55 @@
-import { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxView5 from "./BoxView5"; // ✅ viewer/editor for Electrical
 
-export default function DbTestViewer() {
+export default function DbTestViewer({ onTotalsChange }) {
   const [rows, setRows] = useState([]); // each row gets .Alternates: []
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [selected, setSelected] = useState(null);
 
-  const API_BASE = "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
+  const API_BASE =
+    "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
   const parseCost = (val) => {
     const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
     return isNaN(n) ? 0 : n;
   };
 
+  const fmtMoney = (n) => `$${parseCost(n).toFixed(2)}`;
+
+  const pickUsedOrPrimary = (primary, alternates = []) => {
+    const usedAlt = alternates.find((a) => Number(a?.IsUsed) === 1);
+    return usedAlt || primary;
+  };
+
   // ✅ Alternates for Electrical
-  async function fetchAlternates(electricalId) {
-    try {
-      const res = await fetch(
-        `${API_BASE}/electrical/alternates/${encodeURIComponent(electricalId)}`
-      );
-      if (!res.ok) throw new Error(`Alt HTTP ${res.status}`);
+  const fetchAlternates = useCallback(
+    async (electricalId) => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/electrical/alternates/${encodeURIComponent(electricalId)}`
+        );
+        if (!res.ok) throw new Error(`Alt HTTP ${res.status}`);
 
-      const json = await res.json();
-      const list = Array.isArray(json)
-        ? json
-        : Array.isArray(json?.sample)
-        ? json.sample
-        : [];
+        const json = await res.json();
+        const list = Array.isArray(json)
+          ? json
+          : Array.isArray(json?.sample)
+          ? json.sample
+          : [];
 
-      return list;
-    } catch (e) {
-      console.warn("Alternates fetch failed for", electricalId, e);
-      return [];
-    }
-  }
+        return list;
+      } catch (e) {
+        console.warn("Alternates fetch failed for", electricalId, e);
+        return [];
+      }
+    },
+    [API_BASE]
+  );
 
-  async function fetchRows() {
+  const fetchRows = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -68,11 +79,11 @@ export default function DbTestViewer() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [API_BASE, fetchAlternates]);
 
   useEffect(() => {
     fetchRows();
-  }, []);
+  }, [fetchRows]);
 
   // ✅ DELETE one row by ElectricalId (backend: DELETE /api/electrical/{id})
   const handleDelete = async (electricalId) => {
@@ -112,18 +123,25 @@ export default function DbTestViewer() {
       )
     );
 
-  // Total cost = primary unless an alternate has IsUsed === 1
-  const totalCost = rows.reduce((sum, r) => {
-    const primaryCost = parseCost(r?.Cost);
-    const usedAlt = r?.Alternates?.find((a) => Number(a?.IsUsed) === 1);
-    const costToUse = usedAlt ? parseCost(usedAlt.Cost) : primaryCost;
-    return sum + costToUse;
-  }, 0);
+  // ✅ Total cost (alt-adjusted) + memoized
+  const totalCost = useMemo(() => {
+    return rows.reduce((sum, r) => {
+      const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
+      return sum + parseCost(chosen?.Cost);
+    }, 0);
+  }, [rows]);
+
+  // ✅ Report section total up to Home whenever total changes
+  useEffect(() => {
+    if (typeof onTotalsChange === "function") {
+      onTotalsChange(totalCost); // send NUMBER
+    }
+  }, [totalCost, onTotalsChange]);
 
   if (loading) return <p className="p-3">Loading...</p>;
   if (error) return <p className="p-3 text-danger">Error: {error}</p>;
 
-  // ✅ Swap to BoxView4 editor/viewer
+  // ✅ Swap to BoxView5 editor/viewer
   if (selected === 1000) {
     return (
       <BoxView5
@@ -185,10 +203,11 @@ export default function DbTestViewer() {
                 const hasUsedAlt = r?.Alternates?.some(
                   (a) => Number(a?.IsUsed) === 1
                 );
+                const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
 
                 return (
-                  <>
-                    <tr key={r.ElectricalId || `row-${i}`}>
+                  <React.Fragment key={r.ElectricalId || `rowwrap-${i}`}>
+                    <tr>
                       <td>
                         {i + 1}
                         {hasUsedAlt && (
@@ -200,10 +219,10 @@ export default function DbTestViewer() {
                           </span>
                         )}
                       </td>
-                      <td>{r.Description}</td>
-                      <td>{r.Supplier}</td>
-                      <td>${parseCost(r.Cost).toFixed(2)}</td>
-                      <td>{r.Notes}</td>
+                      <td>{chosen?.Description}</td>
+                      <td>{chosen?.Supplier}</td>
+                      <td>{fmtMoney(chosen?.Cost)}</td>
+                      <td>{chosen?.Notes}</td>
                       <td>
                         <button
                           className="btn btn-sm btn-outline-primary"
@@ -231,7 +250,7 @@ export default function DbTestViewer() {
                       (r.Alternates?.length ? (
                         r.Alternates.map((a, ai) => (
                           <tr
-                            key={`${r.ElectricalId}-alt-${ai}`}
+                            key={`${r.ElectricalId}-alt-${a?.AlternateId || ai}`}
                             className="table-light"
                           >
                             <td></td>
@@ -240,25 +259,27 @@ export default function DbTestViewer() {
                                 ALT
                               </span>
                               {a.Description}
+                              {Number(a?.IsUsed) === 1 && (
+                                <span className="ms-2 badge text-bg-success">
+                                  USED
+                                </span>
+                              )}
                             </td>
                             <td>{a.Supplier}</td>
-                            <td>${parseCost(a.Cost).toFixed(2)}</td>
+                            <td>{fmtMoney(a.Cost)}</td>
                             <td>{a.Notes}</td>
                             <td colSpan={2}></td>
                           </tr>
                         ))
                       ) : (
-                        <tr
-                          key={`${r.ElectricalId}-noalts`}
-                          className="table-light"
-                        >
+                        <tr className="table-light">
                           <td></td>
                           <td className="ps-4 text-muted" colSpan={6}>
                             No alternates
                           </td>
                         </tr>
                       ))}
-                  </>
+                  </React.Fragment>
                 );
               })
             )}
@@ -270,14 +291,13 @@ export default function DbTestViewer() {
           >
             <tr>
               <th colSpan={3}>Total Cost (alt-adjusted)</th>
-              <th>${totalCost.toFixed(2)}</th>
+              <th>{fmtMoney(totalCost)}</th>
               <th colSpan={3}></th>
             </tr>
           </tfoot>
         </table>
       </div>
-
-      
     </div>
   );
 }
+

@@ -1,8 +1,11 @@
+
+
+
 import { useEffect, useMemo, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxViewLabor from "./BoxViewLabor"; // ✅ make this editor use /labor endpoints
 
-export default function LaborViewer() {
+export default function LaborViewer({ onTotalsChange }) {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -85,16 +88,50 @@ export default function LaborViewer() {
     }
   };
 
+  /**
+   * ✅ totals + grouped by LaborType
+   * Produces:
+   *   totals.laborCost
+   *   totals.laborHours
+   *   totals.byType = [{ type, cost, hours }]
+   */
   const totals = useMemo(() => {
-    return rows.reduce(
-      (acc, r) => {
-        acc.laborHours += parseNum(r?.LaborHours);
-        acc.laborCost += parseNum(r?.LaborCost);
-        return acc;
-      },
-      { laborHours: 0, laborCost: 0 }
-    );
+    const acc = {
+      laborHours: 0,
+      laborCost: 0,
+      byType: [],
+    };
+
+    const map = new Map();
+
+    for (const r of rows) {
+      const hours = parseNum(r?.LaborHours);
+      const cost = parseNum(r?.LaborCost);
+      const type = String(r?.LaborType ?? "").trim() || "Unspecified";
+
+      acc.laborHours += hours;
+      acc.laborCost += cost;
+
+      const prev = map.get(type) || { type, cost: 0, hours: 0 };
+      prev.cost += cost;
+      prev.hours += hours;
+      map.set(type, prev);
+    }
+
+    acc.byType = Array.from(map.values()).sort((a, b) => b.cost - a.cost);
+    return acc;
   }, [rows]);
+
+  // ✅ Report grouped totals up to Home whenever totals change
+  useEffect(() => {
+    if (typeof onTotalsChange === "function") {
+      onTotalsChange({
+        cost: totals.laborCost,
+        hours: totals.laborHours,
+        byType: totals.byType,
+      });
+    }
+  }, [totals.laborCost, totals.laborHours, totals.byType, onTotalsChange]);
 
   if (loading) return <p className="p-3">Loading...</p>;
   if (error) return <p className="p-3 text-danger">Error: {error}</p>;
@@ -123,6 +160,29 @@ export default function LaborViewer() {
           Input
         </button>
       </div>
+
+      {/* Optional: show grouped summary on the labor page too */}
+      {totals.byType.length > 0 && (
+        <div className="mb-3">
+          <div className="fw-semibold mb-1">Totals by Labor Type</div>
+          <div className="d-flex flex-column gap-1">
+            {totals.byType.map((t) => (
+              <div
+                key={t.type}
+                className="d-flex justify-content-between align-items-center"
+              >
+                <div>{t.type}</div>
+                <div className="text-end">
+                  <span className="text-muted small me-3">
+                    {t.hours.toFixed(2)} hrs
+                  </span>
+                  <strong>{fmtMoney(t.cost)}</strong>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div
         className="table-responsive"

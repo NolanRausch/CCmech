@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxView1 from "./BoxView1";
 
-export default function DbTestViewer() {
+export default function DbTestViewer({ onTotalsChange }) {
   // 🔧 All hooks at the top
   const [rows, setRows] = useState([]); // each row gets .Alternates: []
   const [error, setError] = useState(null);
@@ -14,17 +14,17 @@ export default function DbTestViewer() {
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
   // Safe number parser for strings like "250.00", "$250", etc.
-  const parseNum = (val) => {
+  const parseNum = useCallback((val) => {
     const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
     return isNaN(n) ? 0 : n;
-  };
+  }, []);
 
-  const fmtMoney = (n) => `$${parseNum(n).toFixed(2)}`;
+  const fmtMoney = useCallback((n) => `$${parseNum(n).toFixed(2)}`, [parseNum]);
 
-  const pickUsedOrPrimary = (primary, alternates = []) => {
+  const pickUsedOrPrimary = useCallback((primary, alternates = []) => {
     const usedAlt = alternates.find((a) => Number(a?.IsUsed) === 1);
     return usedAlt || primary;
-  };
+  }, []);
 
   const fetchAlternates = useCallback(
     async (equipmentId) => {
@@ -75,6 +75,13 @@ export default function DbTestViewer() {
     fetchRows();
   }, [fetchRows]);
 
+  // Toggle expand
+  const toggleExpand = useCallback((id) => {
+    setRows((prev) =>
+      prev.map((r) => (r.EquipmentId === id ? { ...r, _expand: !r._expand } : r))
+    );
+  }, []);
+
   // DELETE one row by EquipmentId (backend: DELETE /api/equipment/{id})
   const handleDelete = async (equipmentId) => {
     try {
@@ -90,10 +97,11 @@ export default function DbTestViewer() {
         data = text;
       }
 
-      if (!res.ok)
+      if (!res.ok) {
         throw new Error(
           typeof data === "string" ? data : data?.error || `HTTP ${res.status}`
         );
+      }
 
       // Optimistically remove from UI
       setRows((prev) => prev.filter((r) => r.EquipmentId !== equipmentId));
@@ -105,12 +113,6 @@ export default function DbTestViewer() {
     }
   };
 
-  // Toggle expand
-  const toggleExpand = (id) =>
-    setRows((prev) =>
-      prev.map((r) => (r.EquipmentId === id ? { ...r, _expand: !r._expand } : r))
-    );
-
   // Totals: material cost only (labor fields removed)
   const totals = useMemo(() => {
     return rows.reduce(
@@ -121,7 +123,27 @@ export default function DbTestViewer() {
       },
       { materialCost: 0 }
     );
-  }, [rows]);
+  }, [rows, pickUsedOrPrimary, parseNum]);
+
+  // ✅ Define totalCost (the thing your parent expects)
+  const totalCost = totals.materialCost;
+
+  // ✅ Push totals up to Home (deduped to prevent render loops)
+  const lastSentRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof onTotalsChange !== "function") return;
+
+    // Create a stable signature so we only notify on *real* changes.
+    // (Keep it small and deterministic.)
+    const payload = { cost: Number(totalCost) || 0, label: "Equipment" };
+    const sig = `${payload.label}:${payload.cost.toFixed(4)}`;
+
+    if (lastSentRef.current === sig) return;
+    lastSentRef.current = sig;
+
+    onTotalsChange(payload);
+  }, [totalCost, onTotalsChange]);
 
   // Early returns AFTER hooks
   if (loading) return <p className="p-3">Loading...</p>;
@@ -143,7 +165,9 @@ export default function DbTestViewer() {
   return (
     <div className="container py-4">
       <div className="d-flex align-items-center justify-content-between mb-3">
-        <h5 className="mb-0">Equipment: RTU's, Chillers, Boilers, Pumps, Towers, VRF, Splits</h5>
+        <h5 className="mb-0">
+          Equipment: RTU&apos;s, Chillers, Boilers, Pumps, Towers, VRF, Splits
+        </h5>
         <button
           className="btn btn-outline-secondary btn-sm"
           onClick={() => setSelected(1000)}
@@ -162,7 +186,10 @@ export default function DbTestViewer() {
         }}
       >
         <table className="table table-striped table-hover table-sm mb-0">
-          <thead className="table-dark" style={{ position: "sticky", top: 0, zIndex: 2 }}>
+          <thead
+            className="table-dark"
+            style={{ position: "sticky", top: 0, zIndex: 2 }}
+          >
             <tr>
               <th style={{ width: "4rem" }}>#</th>
               <th>Description</th>
@@ -183,12 +210,14 @@ export default function DbTestViewer() {
               </tr>
             ) : (
               rows.map((r, i) => {
-                const hasUsedAlt = r?.Alternates?.some((a) => Number(a?.IsUsed) === 1);
+                const hasUsedAlt = r?.Alternates?.some(
+                  (a) => Number(a?.IsUsed) === 1
+                );
                 const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
 
                 return (
-                  <>
-                    <tr key={r.EquipmentId || `row-${i}`}>
+                  <React.Fragment key={r.EquipmentId || `rowwrap-${i}`}>
+                    <tr>
                       <td>
                         {i + 1}
                         {hasUsedAlt && (
@@ -232,13 +261,20 @@ export default function DbTestViewer() {
                     {r._expand &&
                       (r.Alternates?.length ? (
                         r.Alternates.map((a, ai) => (
-                          <tr key={`${r.EquipmentId}-alt-${ai}`} className="table-light">
+                          <tr
+                            key={`${r.EquipmentId}-alt-${a?.AlternateId || ai}`}
+                            className="table-light"
+                          >
                             <td></td>
                             <td className="ps-4">
-                              <span className="badge text-bg-secondary me-2">ALT</span>
+                              <span className="badge text-bg-secondary me-2">
+                                ALT
+                              </span>
                               {a.Description}
                               {Number(a?.IsUsed) === 1 && (
-                                <span className="ms-2 badge text-bg-success">USED</span>
+                                <span className="ms-2 badge text-bg-success">
+                                  USED
+                                </span>
                               )}
                             </td>
                             <td>{a.Supplier}</td>
@@ -248,20 +284,23 @@ export default function DbTestViewer() {
                           </tr>
                         ))
                       ) : (
-                        <tr key={`${r.EquipmentId}-noalts`} className="table-light">
+                        <tr className="table-light">
                           <td></td>
                           <td className="ps-4 text-muted" colSpan={6}>
                             No alternates
                           </td>
                         </tr>
                       ))}
-                  </>
+                  </React.Fragment>
                 );
               })
             )}
           </tbody>
 
-          <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
+          <tfoot
+            className="table-secondary"
+            style={{ position: "sticky", bottom: 0 }}
+          >
             <tr>
               <th colSpan={3}>Totals (alt-adjusted)</th>
               <th>{fmtMoney(totals.materialCost)}</th>
@@ -270,9 +309,6 @@ export default function DbTestViewer() {
           </tfoot>
         </table>
       </div>
-
-      
     </div>
   );
 }
-

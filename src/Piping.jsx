@@ -1,43 +1,54 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxView3 from "./BoxView3"; // ✅ editor for Piping
 
-export default function DbTestViewer() {
+export default function DbTestViewer({ onTotalsChange }) {
   const [rows, setRows] = useState([]); // each row gets .Alternates: []
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [selected, setSelected] = useState(null);
 
-  const API_BASE = "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
+  const API_BASE =
+    "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
   const parseCost = (val) => {
     const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
     return isNaN(n) ? 0 : n;
   };
 
-  async function fetchAlternates(pipingId) {
-    try {
-      const res = await fetch(
-        `${API_BASE}/piping/alternates/${encodeURIComponent(pipingId)}`
-      );
-      if (!res.ok) throw new Error(`Alt HTTP ${res.status}`);
+  const fmtMoney = (n) => `$${parseCost(n).toFixed(2)}`;
 
-      const json = await res.json();
-      const list = Array.isArray(json)
-        ? json
-        : Array.isArray(json?.sample)
-        ? json.sample
-        : [];
+  const pickUsedOrPrimary = (primary, alternates = []) => {
+    const usedAlt = alternates.find((a) => Number(a?.IsUsed) === 1);
+    return usedAlt || primary;
+  };
 
-      return list;
-    } catch (e) {
-      console.warn("Alternates fetch failed for", pipingId, e);
-      return [];
-    }
-  }
+  const fetchAlternates = useCallback(
+    async (pipingId) => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/piping/alternates/${encodeURIComponent(pipingId)}`
+        );
+        if (!res.ok) throw new Error(`Alt HTTP ${res.status}`);
 
-  async function fetchRows() {
+        const json = await res.json();
+        const list = Array.isArray(json)
+          ? json
+          : Array.isArray(json?.sample)
+          ? json.sample
+          : [];
+
+        return list;
+      } catch (e) {
+        console.warn("Alternates fetch failed for", pipingId, e);
+        return [];
+      }
+    },
+    [API_BASE]
+  );
+
+  const fetchRows = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -67,11 +78,11 @@ export default function DbTestViewer() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [API_BASE, fetchAlternates]);
 
   useEffect(() => {
     fetchRows();
-  }, []);
+  }, [fetchRows]);
 
   // DELETE one row by PipingId (backend: DELETE /api/piping/{id})
   const handleDelete = async (pipingId) => {
@@ -89,10 +100,11 @@ export default function DbTestViewer() {
         data = text;
       }
 
-      if (!res.ok)
+      if (!res.ok) {
         throw new Error(
           typeof data === "string" ? data : data?.error || `HTTP ${res.status}`
         );
+      }
 
       setRows((prev) => prev.filter((r) => r.PipingId !== pipingId));
     } catch (e) {
@@ -108,12 +120,20 @@ export default function DbTestViewer() {
       prev.map((r) => (r.PipingId === id ? { ...r, _expand: !r._expand } : r))
     );
 
-  const totalCost = rows.reduce((sum, r) => {
-    const primaryCost = parseCost(r?.Cost);
-    const usedAlt = r?.Alternates?.find((a) => Number(a?.IsUsed) === 1);
-    const costToUse = usedAlt ? parseCost(usedAlt.Cost) : primaryCost;
-    return sum + costToUse;
-  }, 0);
+  // ✅ Total Cost (alt-adjusted) - uses chosen row and memoizes
+  const totalCost = useMemo(() => {
+    return rows.reduce((sum, r) => {
+      const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
+      return sum + parseCost(chosen?.Cost);
+    }, 0);
+  }, [rows]);
+
+  // ✅ Report section total up to Home whenever total changes
+  useEffect(() => {
+    if (typeof onTotalsChange === "function") {
+      onTotalsChange(totalCost); // send NUMBER
+    }
+  }, [totalCost, onTotalsChange]);
 
   if (loading) return <p className="p-3">Loading...</p>;
   if (error) return <p className="p-3 text-danger">Error: {error}</p>;
@@ -134,7 +154,10 @@ export default function DbTestViewer() {
   return (
     <div className="container py-4">
       <div className="d-flex align-items-center justify-content-between mb-3">
-        <h5 className="mb-0">Gas Copper Steel Condensate Refrigerant Hangers Valves Piping Insulation</h5>
+        <h5 className="mb-0">
+          Gas Copper Steel Condensate Refrigerant Hangers Valves Piping
+          Insulation
+        </h5>
         <button
           className="btn btn-outline-secondary btn-sm"
           onClick={() => setSelected(1000)}
@@ -180,10 +203,11 @@ export default function DbTestViewer() {
                 const hasUsedAlt = r?.Alternates?.some(
                   (a) => Number(a?.IsUsed) === 1
                 );
+                const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
 
                 return (
-                  <>
-                    <tr key={r.PipingId || `row-${i}`}>
+                  <React.Fragment key={r.PipingId || `rowwrap-${i}`}>
+                    <tr>
                       <td>
                         {i + 1}
                         {hasUsedAlt && (
@@ -195,10 +219,10 @@ export default function DbTestViewer() {
                           </span>
                         )}
                       </td>
-                      <td>{r.Description}</td>
-                      <td>{r.Supplier}</td>
-                      <td>${parseCost(r.Cost).toFixed(2)}</td>
-                      <td>{r.Notes}</td>
+                      <td>{chosen?.Description}</td>
+                      <td>{chosen?.Supplier}</td>
+                      <td>{fmtMoney(chosen?.Cost)}</td>
+                      <td>{chosen?.Notes}</td>
                       <td>
                         <button
                           className="btn btn-sm btn-outline-primary"
@@ -226,7 +250,7 @@ export default function DbTestViewer() {
                       (r.Alternates?.length ? (
                         r.Alternates.map((a, ai) => (
                           <tr
-                            key={`${r.PipingId}-alt-${ai}`}
+                            key={`${r.PipingId}-alt-${a?.AlternateId || ai}`}
                             className="table-light"
                           >
                             <td></td>
@@ -235,25 +259,27 @@ export default function DbTestViewer() {
                                 ALT
                               </span>
                               {a.Description}
+                              {Number(a?.IsUsed) === 1 && (
+                                <span className="ms-2 badge text-bg-success">
+                                  USED
+                                </span>
+                              )}
                             </td>
                             <td>{a.Supplier}</td>
-                            <td>${parseCost(a.Cost).toFixed(2)}</td>
+                            <td>{fmtMoney(a.Cost)}</td>
                             <td>{a.Notes}</td>
                             <td colSpan={2}></td>
                           </tr>
                         ))
                       ) : (
-                        <tr
-                          key={`${r.PipingId}-noalts`}
-                          className="table-light"
-                        >
+                        <tr className="table-light">
                           <td></td>
                           <td className="ps-4 text-muted" colSpan={6}>
                             No alternates
                           </td>
                         </tr>
                       ))}
-                  </>
+                  </React.Fragment>
                 );
               })
             )}
@@ -265,14 +291,13 @@ export default function DbTestViewer() {
           >
             <tr>
               <th colSpan={3}>Total Cost (alt-adjusted)</th>
-              <th>${totalCost.toFixed(2)}</th>
+              <th>{fmtMoney(totalCost)}</th>
               <th colSpan={3}></th>
             </tr>
           </tfoot>
         </table>
       </div>
-
-     
     </div>
   );
 }
+
