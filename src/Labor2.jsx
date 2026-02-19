@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxViewLabor from "./BoxViewLabor"; // editor uses /labor endpoints
 
@@ -14,19 +14,36 @@ export default function LaborViewer({ onTotalsChange }) {
 
   // 🔒 This file is locked to a single labor code
   const CODE_NUMBER = "2000";
+  const BLUE = "#0b2a4a";
 
-  const parseNum = (val) => {
+  const isSub = (t) => String(t || "").trim().toLowerCase() === "subcontractor";
+
+  // Safe number parser for strings like "250.00", "$250", etc.
+  const parseNum = useCallback((val) => {
     const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
     return isNaN(n) ? 0 : n;
-  };
+  }, []);
 
-  const fmtMoney = (n) => `$${parseNum(n).toFixed(2)}`;
-  const fmtHours = (n) => parseNum(n).toFixed(2);
+  // ✅ Correct money formatting: 30000 -> $30,000.00
+  const fmtMoney = useCallback(
+    (val) => {
+      const n = parseNum(val);
+      return n.toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    },
+    [parseNum]
+  );
+
+  const fmtHours = useCallback((val) => parseNum(val).toFixed(2), [parseNum]);
 
   // ======================
   // Fetch labor rows
   // ======================
-  async function fetchRows() {
+  const fetchRows = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -49,12 +66,11 @@ export default function LaborViewer({ onTotalsChange }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [API_BASE, CODE_NUMBER]);
 
   useEffect(() => {
     fetchRows();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchRows]);
 
   // ======================
   // Delete labor row
@@ -92,58 +108,42 @@ export default function LaborViewer({ onTotalsChange }) {
   };
 
   // ======================
-  // Totals + grouping by LaborType
+  // Totals
   // ======================
   const totals = useMemo(() => {
-    const acc = {
-      laborHours: 0,
-      laborCost: 0,
-      byType: {}, // { "Pipefitter": { hours, cost }, ... }
+    return rows.reduce(
+      (acc, r) => {
+        acc.laborHours += parseNum(r?.LaborHours);
+        acc.laborCost += parseNum(r?.LaborCost);
+        return acc;
+      },
+      { laborHours: 0, laborCost: 0 }
+    );
+  }, [rows, parseNum]);
+
+  // ======================
+  // Report totals to Home (deduped)
+  // ======================
+  const lastSentRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof onTotalsChange !== "function") return;
+
+    const payload = {
+      cost: Number(totals.laborCost) || 0,
+      hours: Number(totals.laborHours) || 0,
+      label: "Labor",
     };
 
-    for (const r of rows) {
-      const hours = parseNum(r?.LaborHours);
-      const cost = parseNum(r?.LaborCost);
+    const sig = `${payload.label}:${payload.cost.toFixed(
+      4
+    )}:${payload.hours.toFixed(4)}`;
 
-      acc.laborHours += hours;
-      acc.laborCost += cost;
+    if (lastSentRef.current === sig) return;
+    lastSentRef.current = sig;
 
-      const typeRaw = String(r?.LaborType ?? "").trim();
-      const type = typeRaw || "Uncategorized";
-
-      if (!acc.byType[type]) {
-        acc.byType[type] = { hours: 0, cost: 0 };
-      }
-
-      acc.byType[type].hours += hours;
-      acc.byType[type].cost += cost;
-    }
-
-    return acc;
-  }, [rows]);
-
-  // ======================
-  // Sorted labor types (MUST be before returns)
-  // ======================
-  const sortedTypes = useMemo(() => {
-    return Object.entries(totals.byType).sort(
-      (a, b) => (b[1]?.cost || 0) - (a[1]?.cost || 0)
-    );
-  }, [totals.byType]);
-
-  // ======================
-  // Report totals to Home
-  // ======================
-  useEffect(() => {
-    if (typeof onTotalsChange === "function") {
-      onTotalsChange({
-        code: CODE_NUMBER,
-        cost: totals.laborCost,
-        hours: totals.laborHours,
-        byType: totals.byType,
-      });
-    }
-  }, [totals, onTotalsChange]);
+    onTotalsChange(payload);
+  }, [totals.laborCost, totals.laborHours, onTotalsChange]);
 
   // ======================
   // Early returns (SAFE)
@@ -168,51 +168,18 @@ export default function LaborViewer({ onTotalsChange }) {
   // ======================
   return (
     <div className="container py-4">
-      <div className="d-flex align-items-center justify-content-between mb-3">
-        <h5 className="mb-0">Labor</h5>
+      {/* ✅ Input LEFT + LABOR all caps blue */}
+      <div className="d-flex align-items-center gap-3 mb-3">
         <button
-          className="btn btn-outline-secondary btn-sm"
+          className="btn btn-outline-secondary btn-lg"
           onClick={() => setSelected(7000)}
         >
           Input
         </button>
-      </div>
 
-      {/* ===== Totals by Labor Type ===== */}
-      <div className="card mb-3">
-        <div className="card-body">
-          <div className="fw-semibold mb-2">Totals by Labor Type</div>
-
-          {sortedTypes.length === 0 ? (
-            <div className="text-muted">No labor types found</div>
-          ) : (
-            <table className="table table-sm mb-0">
-              <thead>
-                <tr>
-                  <th>Labor Type</th>
-                  <th style={{ width: "8rem" }}>Hours</th>
-                  <th style={{ width: "10rem" }}>Cost</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedTypes.map(([type, v]) => (
-                  <tr key={type}>
-                    <td>{type}</td>
-                    <td>{fmtHours(v.hours)}</td>
-                    <td>{fmtMoney(v.cost)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="table-secondary">
-                  <th>Total</th>
-                  <th>{fmtHours(totals.laborHours)}</th>
-                  <th>{fmtMoney(totals.laborCost)}</th>
-                </tr>
-              </tfoot>
-            </table>
-          )}
-        </div>
+        <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
+          Labor
+        </h5>
       </div>
 
       {/* ===== Raw Labor Rows ===== */}
@@ -225,55 +192,86 @@ export default function LaborViewer({ onTotalsChange }) {
           borderRadius: "6px",
         }}
       >
-        <table className="table table-striped table-hover table-sm mb-0">
+        <table className="table table-striped table-hover table-sm mb-0 table-fixed">
           <thead
             className="table-dark"
-            style={{ position: "sticky", top: 0, zIndex: 2 }}
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 2,
+              backgroundColor: BLUE,
+            }}
           >
             <tr>
-              <th style={{ width: "4rem" }}>#</th>
-              <th style={{ width: "10rem" }}>Code</th>
-              <th>Labor Type</th>
-              <th style={{ width: "7rem" }}>Hours</th>
-              <th style={{ width: "8rem" }}>Labor Cost</th>
-              <th>Notes</th>
-              <th style={{ width: "7rem" }}>Actions</th>
+              <th style={{ width: "4rem", backgroundColor: BLUE }}>#</th>
+
+              <th style={{ backgroundColor: BLUE }}>Labor Type</th>
+
+              <th style={{ width: "14rem", backgroundColor: BLUE }}>
+                Subcontractor Name
+              </th>
+
+              <th style={{ width: "7rem", backgroundColor: BLUE }}>Hours</th>
+              <th style={{ width: "9rem", backgroundColor: BLUE }}>
+                Labor Cost
+              </th>
+
+              <th style={{ backgroundColor: BLUE }}>Notes</th>
+              <th style={{ width: "7rem", backgroundColor: BLUE }}>Actions</th>
             </tr>
           </thead>
 
           <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="text-center py-4">
-                  No labor records found
+            {rows.map((r, i) => (
+              <tr key={r.LaborId || `row-${i}`}>
+                <td>{i + 1}</td>
+
+                <td style={{ whiteSpace: "nowrap" }}>{r.LaborType || ""}</td>
+
+                <td style={{ whiteSpace: "nowrap" }}>
+                  {isSub(r.LaborType) ? (r.LaborName || "") : ""}
+                </td>
+
+                <td style={{ whiteSpace: "nowrap" }}>{fmtHours(r.LaborHours)}</td>
+                <td style={{ whiteSpace: "nowrap" }}>{fmtMoney(r.LaborCost)}</td>
+
+                <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
+                  {r.Notes}
+                </td>
+
+                <td>
+                  <button
+                    className="btn btn-sm btn-outline-danger"
+                    onClick={() => handleDelete(r.LaborId)}
+                    disabled={deletingId === r.LaborId}
+                  >
+                    {deletingId === r.LaborId ? "Deleting…" : "Clear"}
+                  </button>
                 </td>
               </tr>
-            ) : (
-              rows.map((r, i) => (
-                <tr key={r.LaborId || `row-${i}`}>
-                  <td>{i + 1}</td>
-                  <td>{r.CodeNumber}</td>
-                  <td>{r.LaborType || ""}</td>
-                  <td>{fmtHours(r.LaborHours)}</td>
-                  <td>{fmtMoney(r.LaborCost)}</td>
-                  <td>{r.Notes}</td>
-                  <td>
-                    <button
-                      className="btn btn-sm btn-outline-danger"
-                      onClick={() => handleDelete(r.LaborId)}
-                      disabled={deletingId === r.LaborId}
-                    >
-                      {deletingId === r.LaborId ? "Deleting…" : "Clear"}
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
+            ))}
           </tbody>
+
+          <tfoot
+            className="table-secondary"
+            style={{ position: "sticky", bottom: 0 }}
+          >
+            <tr>
+              <th colSpan={2}>Totals</th>
+              <th></th>
+              <th>{fmtHours(totals.laborHours)}</th>
+              <th>{fmtMoney(totals.laborCost)}</th>
+              <th colSpan={2}></th>
+            </tr>
+          </tfoot>
         </table>
       </div>
 
-      <h5 className="mt-3">Code Number {CODE_NUMBER}</h5>
+      {/* ensures table-fixed works everywhere */}
+      <style>{`
+        .table-fixed { table-layout: fixed; width: 100%; }
+      `}</style>
     </div>
   );
 }
+

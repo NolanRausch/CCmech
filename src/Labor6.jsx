@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxViewLabor from "./BoxViewLabor"; // ✅ make this editor use /labor endpoints
 
@@ -12,23 +12,37 @@ export default function LaborViewer({ onTotalsChange }) {
   const API_BASE =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
-  // change this if you want the viewer locked to a code
   const CODE_NUMBER = "6000";
+  const BLUE = "#0b2a4a";
 
-  const parseNum = (val) => {
+  const isSub = (t) => String(t || "").trim().toLowerCase() === "subcontractor";
+
+  const parseNum = useCallback((val) => {
     const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
     return isNaN(n) ? 0 : n;
-  };
+  }, []);
 
-  const fmtMoney = (n) => `$${parseNum(n).toFixed(2)}`;
-  const fmtHours = (n) => parseNum(n).toFixed(2);
+  // ✅ Correct money formatting: 30000 -> $30,000.00
+  const fmtMoney = useCallback(
+    (val) => {
+      const n = parseNum(val);
+      return n.toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    },
+    [parseNum]
+  );
 
-  async function fetchRows() {
+  const fmtHours = useCallback((val) => parseNum(val).toFixed(2), [parseNum]);
+
+  const fetchRows = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // ✅ GET labor rows for a code number
       const res = await fetch(
         `${API_BASE}/labor/code/${encodeURIComponent(CODE_NUMBER)}`
       );
@@ -47,15 +61,13 @@ export default function LaborViewer({ onTotalsChange }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [API_BASE, CODE_NUMBER]);
 
   useEffect(() => {
     fetchRows();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchRows]);
 
   // ✅ DELETE one row by LaborId
-  // Backend route should be: DELETE /api/labor/{id}
   const handleDelete = async (laborId) => {
     try {
       setDeletingId(laborId);
@@ -86,43 +98,39 @@ export default function LaborViewer({ onTotalsChange }) {
     }
   };
 
-  // ✅ totals + grouped totals by LaborType
+  // ✅ Totals ONLY (no Totals-by-Type section)
   const totals = useMemo(() => {
-    const acc = {
-      laborHours: 0,
-      laborCost: 0,
-      byType: {}, // { "Pipefitter": { hours, cost }, ... }
+    return rows.reduce(
+      (acc, r) => {
+        acc.laborHours += parseNum(r?.LaborHours);
+        acc.laborCost += parseNum(r?.LaborCost);
+        return acc;
+      },
+      { laborHours: 0, laborCost: 0 }
+    );
+  }, [rows, parseNum]);
+
+  // ✅ Report totals up to Home (deduped)
+  const lastSentRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof onTotalsChange !== "function") return;
+
+    const payload = {
+      cost: Number(totals.laborCost) || 0,
+      hours: Number(totals.laborHours) || 0,
+      label: "Labor",
     };
 
-    for (const r of rows) {
-      const hours = parseNum(r?.LaborHours);
-      const cost = parseNum(r?.LaborCost);
+    const sig = `${payload.label}:${payload.cost.toFixed(
+      4
+    )}:${payload.hours.toFixed(4)}`;
 
-      acc.laborHours += hours;
-      acc.laborCost += cost;
+    if (lastSentRef.current === sig) return;
+    lastSentRef.current = sig;
 
-      const typeRaw = String(r?.LaborType ?? "").trim();
-      const type = typeRaw || "Uncategorized";
-
-      if (!acc.byType[type]) acc.byType[type] = { hours: 0, cost: 0 };
-      acc.byType[type].hours += hours;
-      acc.byType[type].cost += cost;
-    }
-
-    return acc;
-  }, [rows]);
-
-  // ✅ Report totals up to Home (send OBJECT so Home can merge by labor type)
-  useEffect(() => {
-    if (typeof onTotalsChange === "function") {
-      onTotalsChange({
-        code: CODE_NUMBER,
-        cost: totals.laborCost,
-        hours: totals.laborHours,
-        byType: totals.byType,
-      });
-    }
-  }, [totals, onTotalsChange]);
+    onTotalsChange(payload);
+  }, [totals.laborCost, totals.laborHours, onTotalsChange]);
 
   if (loading) return <p className="p-3">Loading...</p>;
   if (error) return <p className="p-3 text-danger">Error: {error}</p>;
@@ -140,63 +148,33 @@ export default function LaborViewer({ onTotalsChange }) {
     );
   }
 
-  // for display: sort types by cost desc
-  const sortedTypes = Object.entries(totals.byType).sort(
-    (a, b) => (b[1]?.cost || 0) - (a[1]?.cost || 0)
-  );
+  // ✅ fixed widths for small columns so Notes gets the remaining space
+  const col = {
+    idx: { width: "3.25rem", whiteSpace: "nowrap" },
+    type: { width: "12rem", maxWidth: "12rem" },
+    subName: { width: "14rem", maxWidth: "14rem" },
+    hours: { width: "6.5rem", whiteSpace: "nowrap" },
+    cost: { width: "9rem", whiteSpace: "nowrap" },
+    actions: { width: "7rem", whiteSpace: "nowrap" },
+    clamp: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  };
 
   return (
     <div className="container py-4">
-      <div className="d-flex align-items-center justify-content-between mb-3">
-        <h5 className="mb-0">Labor</h5>
+      {/* ✅ Input LEFT + LABOR all caps blue */}
+      <div className="d-flex align-items-center gap-3 mb-3">
         <button
-          className="btn btn-outline-secondary btn-sm"
+          className="btn btn-outline-secondary btn-lg"
           onClick={() => setSelected(7000)}
         >
           Input
         </button>
+
+        <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
+          Labor
+        </h5>
       </div>
 
-      {/* ✅ Totals by Labor Type */}
-      <div className="card mb-3">
-        <div className="card-body">
-          <div className="fw-semibold mb-2">Totals by Labor Type</div>
-
-          {sortedTypes.length === 0 ? (
-            <div className="text-muted">No labor types found</div>
-          ) : (
-            <div className="table-responsive">
-              <table className="table table-sm mb-0">
-                <thead>
-                  <tr>
-                    <th>Labor Type</th>
-                    <th style={{ width: "8rem" }}>Hours</th>
-                    <th style={{ width: "10rem" }}>Cost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedTypes.map(([type, v]) => (
-                    <tr key={type}>
-                      <td>{type}</td>
-                      <td>{fmtHours(v.hours)}</td>
-                      <td>{fmtMoney(v.cost)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="table-secondary">
-                    <th>Total</th>
-                    <th>{fmtHours(totals.laborHours)}</th>
-                    <th>{fmtMoney(totals.laborCost)}</th>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Raw rows table (same as before) */}
       <div
         className="table-responsive"
         style={{
@@ -206,51 +184,70 @@ export default function LaborViewer({ onTotalsChange }) {
           borderRadius: "6px",
         }}
       >
-        <table className="table table-striped table-hover table-sm mb-0">
+        {/* table-fixed so widths stick + Notes takes remaining width */}
+        <table className="table table-striped table-hover table-sm mb-0 table-fixed">
           <thead
             className="table-dark"
-            style={{ position: "sticky", top: 0, zIndex: 2 }}
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 2,
+              backgroundColor: BLUE, // ✅ dark blue header bar
+            }}
           >
             <tr>
-              <th style={{ width: "4rem" }}>#</th>
-              <th style={{ width: "10rem" }}>Code</th>
-              <th>Labor Type</th>
-              <th style={{ width: "7rem" }}>Hours</th>
-              <th style={{ width: "8rem" }}>Labor Cost</th>
-              <th>Notes</th>
-              <th style={{ width: "7rem" }}>Actions</th>
+              <th style={{ ...col.idx, backgroundColor: BLUE }}>#</th>
+
+              {/* ✅ removed Code column */}
+              <th style={{ ...col.type, backgroundColor: BLUE }}>Labor Type</th>
+
+              {/* ✅ show Subcontractor Name column; rows only fill it if type=Subcontractor */}
+              <th style={{ ...col.subName, backgroundColor: BLUE }}>
+                Subcontractor Name
+              </th>
+
+              <th style={{ ...col.hours, backgroundColor: BLUE }}>Hours</th>
+              <th style={{ ...col.cost, backgroundColor: BLUE }}>Labor Cost</th>
+
+              {/* ✅ Notes is flexible */}
+              <th style={{ backgroundColor: BLUE }}>Notes</th>
+
+              <th style={{ ...col.actions, backgroundColor: BLUE }}>Actions</th>
             </tr>
           </thead>
 
+          {/* No "No labor records found" row; table can be empty */}
           <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="text-center py-4">
-                  No labor records found
+            {rows.map((r, i) => (
+              <tr key={r.LaborId || `row-${i}`}>
+                <td style={col.idx}>{i + 1}</td>
+
+                <td style={{ ...col.type, ...col.clamp }}>{r.LaborType || ""}</td>
+
+                <td style={{ ...col.subName, ...col.clamp }}>
+                  {isSub(r.LaborType) ? (r.LaborName || "") : ""}
+                </td>
+
+                <td style={col.hours}>{fmtHours(r.LaborHours)}</td>
+
+                <td style={col.cost}>{fmtMoney(r.LaborCost)}</td>
+
+                <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
+                  {r.Notes}
+                </td>
+
+                <td style={col.actions}>
+                  <button
+                    className="btn btn-sm btn-outline-danger"
+                    onClick={() => handleDelete(r.LaborId)}
+                    disabled={deletingId === r.LaborId}
+                    title="Delete this labor item"
+                  >
+                    {deletingId === r.LaborId ? "Deleting…" : "Clear"}
+                  </button>
                 </td>
               </tr>
-            ) : (
-              rows.map((r, i) => (
-                <tr key={r.LaborId || `row-${i}`}>
-                  <td>{i + 1}</td>
-                  <td>{r.CodeNumber}</td>
-                  <td>{r.LaborType || ""}</td>
-                  <td>{fmtHours(r.LaborHours)}</td>
-                  <td>{fmtMoney(r.LaborCost)}</td>
-                  <td>{r.Notes}</td>
-                  <td>
-                    <button
-                      className="btn btn-sm btn-outline-danger"
-                      onClick={() => handleDelete(r.LaborId)}
-                      disabled={deletingId === r.LaborId}
-                      title="Delete this labor item"
-                    >
-                      {deletingId === r.LaborId ? "Deleting…" : "Clear"}
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
+            ))}
           </tbody>
 
           <tfoot
@@ -267,9 +264,14 @@ export default function LaborViewer({ onTotalsChange }) {
         </table>
       </div>
 
-      <h5 className="mt-3">Code Number {CODE_NUMBER}</h5>
+      {/* ✅ removed the "Code Number 6000" display */}
+
+      <style>{`
+        .table-fixed { table-layout: fixed; width: 100%; }
+      `}</style>
     </div>
   );
 }
+
 
 

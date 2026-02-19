@@ -27,8 +27,6 @@ function Home() {
 
   const [selected, setSelected] = useState(null);
 
-
-
   // ✅ Toggle: "input" shows components, "totals" shows totals only
   const [viewMode, setViewMode] = useState("input"); // "input" | "totals"
 
@@ -108,11 +106,11 @@ function Home() {
       setLaborSections((prev) => {
         const curr = prev[key];
 
-        // IMPORTANT: keep this exactly about "no change => no state update"
         const same =
           (curr?.cost ?? 0) === parsed.cost &&
           (curr?.hours ?? 0) === parsed.hours &&
-          JSON.stringify(curr?.byType ?? []) === JSON.stringify(parsed.byType ?? []);
+          JSON.stringify(curr?.byType ?? []) ===
+            JSON.stringify(parsed.byType ?? []);
 
         if (same) return prev; // ✅ no-op if unchanged
 
@@ -125,7 +123,17 @@ function Home() {
     [readLaborPayload]
   );
 
-  const money = (n) => `$${Number(n || 0).toFixed(2)}`;
+  // ✅ Better money formatting ($30,000.00)
+  const money = useCallback((val) => {
+    const n = Number(String(val ?? "").replace(/[^0-9.\-]/g, ""));
+    const safe = isNaN(n) ? 0 : n;
+    return safe.toLocaleString("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }, []);
 
   // helper: convert pre-tax -> with-tax
   const withTax = useCallback(
@@ -221,8 +229,7 @@ function Home() {
     [grandTotalWithTax]
   );
 
-  // Per Diem = 25 * (total mechanic labor + other total labors) * 1.1
-  // Interpreting as HOURS-based: mechanic + others = total labor hours
+  // Per Diem = 25 * (total labor hours) * 1.1
   const perDiem = useMemo(() => 25 * laborHoursTotal * 1.1, [laborHoursTotal]);
 
   // Warranty = 3% of grand total NON-labor with tax
@@ -240,24 +247,26 @@ function Home() {
     () => combinedGrandTotalWithTax + addersTotal,
     [combinedGrandTotalWithTax, addersTotal]
   );
+
   const nonLaborWithAdders = useMemo(
-  () => grandTotalWithTax + addersTotal,
-  [grandTotalWithTax, addersTotal]
-);
-const margin25 = useMemo(
-  () => nonLaborWithAdders * (1 / (1 - 0.25)),
-  [nonLaborWithAdders]
-);
+    () => grandTotalWithTax + addersTotal,
+    [grandTotalWithTax, addersTotal]
+  );
 
-const margin30 = useMemo(
-  () => nonLaborWithAdders * (1 / (1 - 0.30)),
-  [nonLaborWithAdders]
-);
+  const margin25 = useMemo(
+    () => nonLaborWithAdders * (1 / (1 - 0.25)),
+    [nonLaborWithAdders]
+  );
 
-const margin35 = useMemo(
-  () => nonLaborWithAdders * (1 / (1 - 0.35)),
-  [nonLaborWithAdders]
-);
+  const margin30 = useMemo(
+    () => nonLaborWithAdders * (1 / (1 - 0.30)),
+    [nonLaborWithAdders]
+  );
+
+  const margin35 = useMemo(
+    () => nonLaborWithAdders * (1 / (1 - 0.35)),
+    [nonLaborWithAdders]
+  );
 
   // If you still use this screen, keep it
   if (selected === 1000) {
@@ -265,7 +274,8 @@ const margin35 = useMemo(
   }
 
   const handleClearAll = async () => {
-    if (!window.confirm("Are you sure you want to delete ALL equipment?")) return;
+    if (!window.confirm("Are you sure you want to delete ALL equipment?"))
+      return;
 
     try {
       const res = await fetch("http://localhost:7071/api/equipment/clear", {
@@ -283,6 +293,7 @@ const margin35 = useMemo(
     }
   };
 
+  // ✅ Uniform font + left aligned totals panel
   const TotalsOnly = () => (
     <div className="card mb-3">
       <div className="card-body">
@@ -310,169 +321,198 @@ const margin35 = useMemo(
 
         <hr className="my-3" />
 
-        {/* ===== Non-Labor ===== */}
-        <div className="d-flex flex-column gap-1">
-          <div className="fw-semibold">Non-Labor</div>
+        <div style={{ textAlign: "left", fontSize: "1rem", lineHeight: 1.35 }}>
+          {/* ===== Non-Labor ===== */}
+          <div className="fw-semibold mb-2">Non-Labor</div>
 
-          {Object.entries(totalsBySection).map(([k, v]) => (
-            <div key={k}>
-              {k === "air"
-                ? "Air Distribution"
-                : k.charAt(0).toUpperCase() + k.slice(1)}
-              :{" "}
-              <strong>
-                {money(v)}{" "}
-                <span className="text-muted small">
-                  (w/ tax {money(withTax(v))})
-                </span>
-              </strong>
+          <div className="d-flex flex-column gap-1">
+            {Object.entries(totalsBySection).map(([k, v]) => (
+              <div key={k}>
+                <span className="fw-semibold">
+                  {k === "air"
+                    ? "Air Distribution"
+                    : k.charAt(0).toUpperCase() + k.slice(1)}
+                  :
+                </span>{" "}
+                <strong>{money(v)}</strong>{" "}
+                <span className="text-muted">(w/ tax {money(withTax(v))})</span>
+              </div>
+            ))}
+          </div>
+
+          <hr className="my-3" />
+
+          <div className="d-flex flex-column gap-1">
+            <div>
+              <span className="fw-semibold">Subtotal (Non-Labor):</span>{" "}
+              <strong>{money(subTotal)}</strong>
             </div>
-          ))}
-        </div>
-
-        <hr className="my-3" />
-
-        <div className="d-flex flex-column gap-1">
-          <div className="fs-6">
-            Subtotal (Non-Labor): <strong>{money(subTotal)}</strong>
+            <div>
+              <span className="fw-semibold">
+                Subtotal (Non-Labor, w/ Tax):
+              </span>{" "}
+              <strong>{money(subTotalWithTax)}</strong>
+            </div>
+            <div>
+              <span className="fw-semibold">Tax (Non-Labor, 7%):</span>{" "}
+              <strong>{money(taxAmount)}</strong>
+            </div>
+            <div>
+              <span className="fw-semibold">
+                Grand Total (Non-Labor, w/ Tax):
+              </span>{" "}
+              <strong>{money(grandTotalWithTax)}</strong>
+            </div>
           </div>
-          <div className="fs-6">
-            Subtotal (Non-Labor, w/ Tax):{" "}
-            <strong>{money(subTotalWithTax)}</strong>
-          </div>
-          <div className="fs-6">
-            Tax (Non-Labor, 7%): <strong>{money(taxAmount)}</strong>
-          </div>
-          <div className="fs-5">
-            <strong>
-              Grand Total (Non-Labor, w/ Tax): {money(grandTotalWithTax)}
-            </strong>
-          </div>
-        </div>
 
-        {/* ===== Labor ===== */}
-        <hr className="my-3" />
+          {/* ===== Labor ===== */}
+          <hr className="my-3" />
 
-        <div className="d-flex flex-column gap-1">
-          <div className="fw-semibold">Labor (Grouped by Type)</div>
+          <div className="fw-semibold mb-2">Labor (Grouped by Type)</div>
 
           {laborByType.length === 0 ? (
-            <div className="text-muted small">No labor totals yet.</div>
+            <div className="text-muted">No labor totals yet.</div>
           ) : (
-            laborByType.map((t) => (
-              <div
-                key={t.type}
-                className="d-flex justify-content-between align-items-center"
-              >
-                <div>{t.type}</div>
-                <div className="text-end">
-                  <span className="text-muted small me-3">
+            <div className="d-flex flex-column gap-1">
+              {laborByType.map((t) => (
+                <div key={t.type}>
+                  <span className="fw-semibold">{t.type}:</span>{" "}
+                  <span className="text-muted">
                     {Number(t.hours || 0).toFixed(2)} hrs
+                  </span>{" "}
+                  <strong>{money(t.cost)}</strong>{" "}
+                  <span className="text-muted">
+                    (w/ tax {money(withTax(t.cost))})
                   </span>
-                  <strong>
-                    {money(t.cost)}{" "}
-                    <span className="text-muted small">
-                      (w/ tax {money(withTax(t.cost))})
-                    </span>
-                  </strong>
                 </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
 
-          <div className="fs-6 mt-2">
-            Labor Subtotal: <strong>{money(laborSubTotal)}</strong>{" "}
-            <span className="text-muted small">
-              ({laborHoursTotal.toFixed(2)} hrs)
-            </span>
+          <div className="d-flex flex-column gap-1 mt-2">
+            <div>
+              <span className="fw-semibold">Labor Subtotal:</span>{" "}
+              <strong>{money(laborSubTotal)}</strong>{" "}
+              <span className="text-muted">
+                ({laborHoursTotal.toFixed(2)} hrs)
+              </span>
+            </div>
+            <div>
+              <span className="fw-semibold">Labor Subtotal (w/ Tax):</span>{" "}
+              <strong>{money(laborSubTotalWithTax)}</strong>
+            </div>
+            <div>
+              <span className="fw-semibold">Tax (Labor, 7%):</span>{" "}
+              <strong>{money(laborTaxAmount)}</strong>
+            </div>
+            <div>
+              <span className="fw-semibold">Grand Total (Labor, w/ Tax):</span>{" "}
+              <strong>{money(laborGrandTotalWithTax)}</strong>
+            </div>
           </div>
-          <div className="fs-6">
-            Labor Subtotal (w/ Tax): <strong>{money(laborSubTotalWithTax)}</strong>
-          </div>
-          <div className="fs-6">
-            Tax (Labor, 7%): <strong>{money(laborTaxAmount)}</strong>
-          </div>
-          <div className="fs-5">
-            <strong>
-              Grand Total (Labor, w/ Tax): {money(laborGrandTotalWithTax)}
-            </strong>
-          </div>
-        </div>
 
-        {/* ===== Combined ===== */}
-        <hr className="my-3" />
-        <div className="d-flex flex-column gap-1">
-          <div className="fw-semibold">Combined</div>
-          <div className="fs-6">
-            Combined Subtotal (Pre-Tax): <strong>{money(combinedSubTotal)}</strong>
-          </div>
-          <div className="fs-6">
-            Combined Tax (7%): <strong>{money(combinedTax)}</strong>
-          </div>
-          <div className="fs-5">
-            <strong>
-              Combined Grand Total (w/ Tax): {money(combinedGrandTotalWithTax)}
-            </strong>
-          </div>
-        </div>
+          {/* ===== Combined ===== */}
+          <hr className="my-3" />
 
-        {/* ===== Adders ===== */}
-        <hr className="my-3" />
-        <div className="d-flex flex-column gap-1">
-          <div className="fw-semibold">Adders</div>
-          <div className="fs-6">
-            Contingency (2% of Non-Labor w/ Tax):{" "}
-            <strong>{money(contingency)}</strong>
-          </div>
-          <div className="fs-6">
-            Per Diem (25 × labor hrs × 1.1): <strong>{money(perDiem)}</strong>
-          </div>
-          <div className="fs-6">
-            Warranty (3% of Non-Labor w/ Tax): <strong>{money(warranty)}</strong>
-          </div>
-          <div className="fs-6">
-            Consumables (2.5% of Non-Labor pre-tax):{" "}
-            <strong>{money(consumables)}</strong>
-          </div>
-          <div className="fs-6 mt-2">
-            Adders Total: <strong>{money(addersTotal)}</strong>
-          </div>
-          <div className="fs-5">
-  <strong>
-    Non-Labor Grand Total + Adders: {money(nonLaborWithAdders)}
-  </strong>
-</div>
-<hr className="my-3" />
-<div className="d-flex flex-column gap-1">
-  <div className="fw-semibold">Sell Price Targets (based on Non-Labor + Adders)</div>
+          <div className="fw-semibold mb-2">Combined</div>
 
-  <div className="fs-6">
-    25% Margin: <strong>{money(margin25)}</strong>
-    <span className="text-muted small ms-2">
-      (× {(1 / (1 - 0.25)).toFixed(4)})
-    </span>
-  </div>
+          <div className="d-flex flex-column gap-1">
+            <div>
+              <span className="fw-semibold">Combined Subtotal (Pre-Tax):</span>{" "}
+              <strong>{money(combinedSubTotal)}</strong>
+            </div>
+            <div>
+              <span className="fw-semibold">Combined Tax (7%):</span>{" "}
+              <strong>{money(combinedTax)}</strong>
+            </div>
+            <div>
+              <span className="fw-semibold">
+                Combined Grand Total (w/ Tax):
+              </span>{" "}
+              <strong>{money(combinedGrandTotalWithTax)}</strong>
+            </div>
+          </div>
 
-  <div className="fs-6">
-    30% Margin: <strong>{money(margin30)}</strong>
-    <span className="text-muted small ms-2">
-      (× {(1 / (1 - 0.30)).toFixed(4)})
-    </span>
-  </div>
+          {/* ===== Adders ===== */}
+          <hr className="my-3" />
 
-  <div className="fs-6">
-    35% Margin: <strong>{money(margin35)}</strong>
-    <span className="text-muted small ms-2">
-      (× {(1 / (1 - 0.35)).toFixed(4)})
-    </span>
-  </div>
-</div>
+          <div className="fw-semibold mb-2">Adders</div>
 
+          <div className="d-flex flex-column gap-1">
+            <div>
+              <span className="fw-semibold">
+                Contingency (2% of Non-Labor w/ Tax):
+              </span>{" "}
+              <strong>{money(contingency)}</strong>
+            </div>
+            <div>
+              <span className="fw-semibold">Per Diem (25 × labor hrs × 1.1):</span>{" "}
+              <strong>{money(perDiem)}</strong>
+            </div>
+            <div>
+              <span className="fw-semibold">
+                Warranty (3% of Non-Labor w/ Tax):
+              </span>{" "}
+              <strong>{money(warranty)}</strong>
+            </div>
+            <div>
+              <span className="fw-semibold">
+                Consumables (2.5% of Non-Labor pre-tax):
+              </span>{" "}
+              <strong>{money(consumables)}</strong>
+            </div>
 
-          <div className="fs-5">
-            <strong>
-              Combined Grand Total + Adders: {money(combinedWithAdders)}
-            </strong>
+            <div className="mt-2">
+              <span className="fw-semibold">Adders Total:</span>{" "}
+              <strong>{money(addersTotal)}</strong>
+            </div>
+
+            <div className="mt-2">
+              <span className="fw-semibold">
+                Non-Labor Grand Total + Adders:
+              </span>{" "}
+              <strong>{money(nonLaborWithAdders)}</strong>
+            </div>
+          </div>
+
+          {/* ===== Sell Price Targets ===== */}
+          <hr className="my-3" />
+
+          <div className="fw-semibold mb-2">
+            Sell Price Targets (based on Non-Labor + Adders)
+          </div>
+
+          <div className="d-flex flex-column gap-1">
+            <div>
+              <span className="fw-semibold">25% Margin:</span>{" "}
+              <strong>{money(margin25)}</strong>{" "}
+              <span className="text-muted">
+                (× {(1 / (1 - 0.25)).toFixed(4)})
+              </span>
+            </div>
+
+            <div>
+              <span className="fw-semibold">30% Margin:</span>{" "}
+              <strong>{money(margin30)}</strong>{" "}
+              <span className="text-muted">
+                (× {(1 / (1 - 0.30)).toFixed(4)})
+              </span>
+            </div>
+
+            <div>
+              <span className="fw-semibold">35% Margin:</span>{" "}
+              <strong>{money(margin35)}</strong>{" "}
+              <span className="text-muted">
+                (× {(1 / (1 - 0.35)).toFixed(4)})
+              </span>
+            </div>
+          </div>
+
+          <hr className="my-3" />
+
+          <div>
+            <span className="fw-semibold">Combined Grand Total + Adders:</span>{" "}
+            <strong>{money(combinedWithAdders)}</strong>
           </div>
         </div>
       </div>
@@ -544,9 +584,7 @@ const margin35 = useMemo(
 
           <div>
             <Electrical
-              onTotalsChange={(t) =>
-                setSectionCost("electrical", readCost(t))
-              }
+              onTotalsChange={(t) => setSectionCost("electrical", readCost(t))}
             />
           </div>
 
@@ -566,9 +604,7 @@ const margin35 = useMemo(
 
           <div>
             <Completion
-              onTotalsChange={(t) =>
-                setSectionCost("completion", readCost(t))
-              }
+              onTotalsChange={(t) => setSectionCost("completion", readCost(t))}
             />
           </div>
 
@@ -582,4 +618,5 @@ const margin35 = useMemo(
 }
 
 export default Home;
+
 

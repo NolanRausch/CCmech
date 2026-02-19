@@ -1,7 +1,4 @@
-
-
-
-import { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxViewLabor from "./BoxViewLabor"; // ✅ make this editor use /labor endpoints
 
@@ -17,16 +14,33 @@ export default function LaborViewer({ onTotalsChange }) {
 
   // change this if you want the viewer locked to a code
   const CODE_NUMBER = "1000";
+  const BLUE = "#0b2a4a";
 
-  const parseNum = (val) => {
+  const isSub = (t) => String(t || "").trim().toLowerCase() === "subcontractor";
+
+  // Safe number parser for strings like "250.00", "$250", etc.
+  const parseNum = useCallback((val) => {
     const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
     return isNaN(n) ? 0 : n;
-  };
+  }, []);
 
-  const fmtMoney = (n) => `$${parseNum(n).toFixed(2)}`;
-  const fmtHours = (n) => parseNum(n).toFixed(2);
+  // ✅ Correct money formatting: 30000 -> $30,000.00
+  const fmtMoney = useCallback(
+    (val) => {
+      const n = parseNum(val);
+      return n.toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    },
+    [parseNum]
+  );
 
-  async function fetchRows() {
+  const fmtHours = useCallback((val) => parseNum(val).toFixed(2), [parseNum]);
+
+  const fetchRows = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -50,11 +64,11 @@ export default function LaborViewer({ onTotalsChange }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [API_BASE, CODE_NUMBER]);
 
   useEffect(() => {
     fetchRows();
-  }, []);
+  }, [fetchRows]);
 
   // ✅ DELETE one row by LaborId
   // Backend route should be: DELETE /api/labor/{id}
@@ -90,10 +104,6 @@ export default function LaborViewer({ onTotalsChange }) {
 
   /**
    * ✅ totals + grouped by LaborType
-   * Produces:
-   *   totals.laborCost
-   *   totals.laborHours
-   *   totals.byType = [{ type, cost, hours }]
    */
   const totals = useMemo(() => {
     const acc = {
@@ -120,17 +130,29 @@ export default function LaborViewer({ onTotalsChange }) {
 
     acc.byType = Array.from(map.values()).sort((a, b) => b.cost - a.cost);
     return acc;
-  }, [rows]);
+  }, [rows, parseNum]);
 
-  // ✅ Report grouped totals up to Home whenever totals change
+  // ✅ Report grouped totals up to Home whenever totals change (deduped)
+  const lastSentRef = useRef(null);
+
   useEffect(() => {
-    if (typeof onTotalsChange === "function") {
-      onTotalsChange({
-        cost: totals.laborCost,
-        hours: totals.laborHours,
-        byType: totals.byType,
-      });
-    }
+    if (typeof onTotalsChange !== "function") return;
+
+    const payload = {
+      cost: Number(totals.laborCost) || 0,
+      hours: Number(totals.laborHours) || 0,
+      byType: totals.byType,
+      label: "Labor",
+    };
+
+    const sig = `${payload.label}:${payload.cost.toFixed(4)}:${payload.hours.toFixed(
+      4
+    )}:${payload.byType?.length || 0}`;
+
+    if (lastSentRef.current === sig) return;
+    lastSentRef.current = sig;
+
+    onTotalsChange(payload);
   }, [totals.laborCost, totals.laborHours, totals.byType, onTotalsChange]);
 
   if (loading) return <p className="p-3">Loading...</p>;
@@ -149,40 +171,33 @@ export default function LaborViewer({ onTotalsChange }) {
     );
   }
 
+  // ✅ fixed widths for small columns so Notes gets the remaining space
+  const col = {
+    idx: { width: "3.25rem", whiteSpace: "nowrap" },
+    type: { width: "12rem", maxWidth: "12rem" },
+    subName: { width: "14rem", maxWidth: "14rem" },
+    hours: { width: "6.5rem", whiteSpace: "nowrap" },
+    cost: { width: "9rem", whiteSpace: "nowrap" },
+    actions: { width: "7rem", whiteSpace: "nowrap" },
+    clamp: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  };
+
   return (
     <div className="container py-4">
-      <div className="d-flex align-items-center justify-content-between mb-3">
-        <h5 className="mb-0">Labor</h5>
+      {/* ✅ Input button moved LEFT of header text + btn-lg */}
+      <div className="d-flex align-items-center gap-3 mb-3">
         <button
-          className="btn btn-outline-secondary btn-sm"
+          className="btn btn-outline-secondary btn-lg"
           onClick={() => setSelected(7000)}
         >
           Input
         </button>
-      </div>
 
-      {/* Optional: show grouped summary on the labor page too */}
-      {totals.byType.length > 0 && (
-        <div className="mb-3">
-          <div className="fw-semibold mb-1">Totals by Labor Type</div>
-          <div className="d-flex flex-column gap-1">
-            {totals.byType.map((t) => (
-              <div
-                key={t.type}
-                className="d-flex justify-content-between align-items-center"
-              >
-                <div>{t.type}</div>
-                <div className="text-end">
-                  <span className="text-muted small me-3">
-                    {t.hours.toFixed(2)} hrs
-                  </span>
-                  <strong>{fmtMoney(t.cost)}</strong>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        {/* ✅ ALL CAPS + BLUE */}
+        <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
+          Labor
+        </h5>
+      </div>
 
       <div
         className="table-responsive"
@@ -193,51 +208,67 @@ export default function LaborViewer({ onTotalsChange }) {
           borderRadius: "6px",
         }}
       >
-        <table className="table table-striped table-hover table-sm mb-0">
+        <table className="table table-striped table-hover table-sm mb-0 table-fixed">
           <thead
             className="table-dark"
-            style={{ position: "sticky", top: 0, zIndex: 2 }}
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 2,
+              backgroundColor: BLUE,
+            }}
           >
             <tr>
-              <th style={{ width: "4rem" }}>#</th>
-              <th style={{ width: "10rem" }}>Code</th>
-              <th>Labor Type</th>
-              <th style={{ width: "7rem" }}>Hours</th>
-              <th style={{ width: "8rem" }}>Labor Cost</th>
-              <th>Notes</th>
-              <th style={{ width: "7rem" }}>Actions</th>
+              <th style={{ ...col.idx, backgroundColor: BLUE }}>#</th>
+
+              {/* ✅ removed CODE column */}
+              <th style={{ ...col.type, backgroundColor: BLUE }}>Labor Type</th>
+
+              <th style={{ ...col.subName, backgroundColor: BLUE }}>
+                Subcontractor Name
+              </th>
+
+              <th style={{ ...col.hours, backgroundColor: BLUE }}>Hours</th>
+              <th style={{ ...col.cost, backgroundColor: BLUE }}>Labor Cost</th>
+
+              {/* Notes is flexible */}
+              <th style={{ backgroundColor: BLUE }}>Notes</th>
+
+              <th style={{ ...col.actions, backgroundColor: BLUE }}>Actions</th>
             </tr>
           </thead>
 
           <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="text-center py-4">
-                  No labor records found
+            {rows.map((r, i) => (
+              <tr key={r.LaborId || `row-${i}`}>
+                <td style={col.idx}>{i + 1}</td>
+
+                {/* removed CodeNumber cell */}
+                <td style={{ ...col.type, ...col.clamp }}>{r.LaborType || ""}</td>
+
+                <td style={{ ...col.subName, ...col.clamp }}>
+                  {isSub(r.LaborType) ? (r.LaborName || "") : ""}
+                </td>
+
+                <td style={col.hours}>{fmtHours(r.LaborHours)}</td>
+                <td style={col.cost}>{fmtMoney(r.LaborCost)}</td>
+
+                <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
+                  {r.Notes}
+                </td>
+
+                <td style={col.actions}>
+                  <button
+                    className="btn btn-sm btn-outline-danger"
+                    onClick={() => handleDelete(r.LaborId)}
+                    disabled={deletingId === r.LaborId}
+                    title="Delete this labor item"
+                  >
+                    {deletingId === r.LaborId ? "Deleting…" : "Clear"}
+                  </button>
                 </td>
               </tr>
-            ) : (
-              rows.map((r, i) => (
-                <tr key={r.LaborId || `row-${i}`}>
-                  <td>{i + 1}</td>
-                  <td>{r.CodeNumber}</td>
-                  <td>{r.LaborType || ""}</td>
-                  <td>{fmtHours(r.LaborHours)}</td>
-                  <td>{fmtMoney(r.LaborCost)}</td>
-                  <td>{r.Notes}</td>
-                  <td>
-                    <button
-                      className="btn btn-sm btn-outline-danger"
-                      onClick={() => handleDelete(r.LaborId)}
-                      disabled={deletingId === r.LaborId}
-                      title="Delete this labor item"
-                    >
-                      {deletingId === r.LaborId ? "Deleting…" : "Clear"}
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
+            ))}
           </tbody>
 
           <tfoot
@@ -254,7 +285,13 @@ export default function LaborViewer({ onTotalsChange }) {
         </table>
       </div>
 
-      <h5 className="mt-3">Code Number {CODE_NUMBER}</h5>
+      <style>{`
+        .table-fixed { table-layout: fixed; width: 100%; }
+      `}</style>
     </div>
   );
 }
+
+
+
+

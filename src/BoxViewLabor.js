@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 const API_BASE =
@@ -21,11 +21,85 @@ export default function BoxViewLabor({ codeNumber = "7000", onBack }) {
   const [error, setError] = useState(null);
   const [deletedIds, setDeletedIds] = useState([]);
 
+  const parseNum = useCallback((val) => {
+    const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
+    return isNaN(n) ? 0 : n;
+  }, []);
+
+  // ✅ Correct money formatting: 30000 -> $30,000.00
+  const fmtMoney = useCallback(
+    (val) => {
+      const n = parseNum(val);
+      return n.toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    },
+    [parseNum]
+  );
+
+  const fmtHours = useCallback((val) => parseNum(val).toFixed(2), [parseNum]);
+
+  const isHourlyType = useCallback(
+    (t) => Object.prototype.hasOwnProperty.call(HOURLY_RATES, String(t || "")),
+    []
+  );
+
+  const isManualCostType = useCallback(
+    (t) => String(t) === "Subcontractor" || String(t) === "Engineering",
+    []
+  );
+
+  // ✅ Only Subcontractor has LaborName
+  const isLaborNameType = useCallback((t) => String(t) === "Subcontractor", []);
+
+  const computeCostForRow = useCallback(
+    (r) => {
+      const t = String(r?.laborType ?? "");
+      if (!isHourlyType(t)) return r?.laborCost ?? "";
+      const rate = HOURLY_RATES[t];
+      const hours = parseNum(r?.laborHours);
+      return (hours * rate).toFixed(2);
+    },
+    [isHourlyType, parseNum]
+  );
+
+  const normalizeRowAfterTypeChange = useCallback(
+    (r, nextType) => {
+      const t = String(nextType || "");
+      let next = { ...r, laborType: t };
+
+      // ✅ If switching away from Subcontractor, clear laborName
+      if (!isLaborNameType(t)) {
+        next.laborName = "";
+      }
+
+      // Manual-cost types: hours should display as NA and payload hours should be null
+      if (isManualCostType(t)) {
+        next.laborHours = "NA";
+        return next;
+      }
+
+      // Hourly types: hours should be editable; if it was NA, clear it + recompute cost
+      if (isHourlyType(t)) {
+        next.laborHours = next.laborHours === "NA" ? "" : next.laborHours;
+        next.laborCost = computeCostForRow(next);
+        return next;
+      }
+
+      return next;
+    },
+    [computeCostForRow, isHourlyType, isLaborNameType, isManualCostType]
+  );
+
   const blank = useMemo(
     () => ({
       laborId: undefined,
       codeNumber: String(codeNumber ?? ""),
-      laborType: "", // one of LABOR_TYPES
+      laborName: "", // ✅ stored, but only shown for Subcontractor
+      laborType: "",
       laborHours: "",
       laborCost: "",
       notes: "",
@@ -34,46 +108,14 @@ export default function BoxViewLabor({ codeNumber = "7000", onBack }) {
     [codeNumber]
   );
 
-  const parseNum = (val) => {
-    const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
-    return isNaN(n) ? 0 : n;
-  };
-  const fmtMoney = (n) => `$${parseNum(n).toFixed(2)}`;
-  const fmtHours = (n) => parseNum(n).toFixed(2);
-
-  const isHourlyType = (t) => Object.prototype.hasOwnProperty.call(HOURLY_RATES, String(t || ""));
-  const isManualCostType = (t) => String(t) === "Subcontractor" || String(t) === "Engineering";
-
-  const computeCostForRow = (r) => {
-    const t = String(r?.laborType ?? "");
-    if (!isHourlyType(t)) return r?.laborCost ?? "";
-    const rate = HOURLY_RATES[t];
-    const hours = parseNum(r?.laborHours);
-    return (hours * rate).toFixed(2);
-  };
-
-  const normalizeRowAfterTypeChange = (r, nextType) => {
-    const t = String(nextType || "");
-    // Manual-cost types: hours should display as NA and payload hours should be null
-    if (isManualCostType(t)) {
-      return { ...r, laborType: t, laborHours: "NA" };
-    }
-
-    // Hourly types: hours should be editable; if it was NA, clear it
-    if (isHourlyType(t)) {
-      const next = { ...r, laborType: t, laborHours: r.laborHours === "NA" ? "" : r.laborHours };
-      return { ...next, laborCost: computeCostForRow(next) };
-    }
-
-    return { ...r, laborType: t };
-  };
-
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const res = await fetch(`${API_BASE}/labor/code/${encodeURIComponent(String(codeNumber))}`);
+      const res = await fetch(
+        `${API_BASE}/labor/code/${encodeURIComponent(String(codeNumber))}`
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
 
@@ -88,6 +130,7 @@ export default function BoxViewLabor({ codeNumber = "7000", onBack }) {
         const base = {
           laborId: r.LaborId,
           codeNumber: r.CodeNumber ?? String(codeNumber ?? ""),
+          laborName: r.LaborName ?? "",
           laborType,
           laborHours: r.LaborHours ?? "",
           laborCost: r.LaborCost ?? "",
@@ -96,6 +139,9 @@ export default function BoxViewLabor({ codeNumber = "7000", onBack }) {
         };
 
         // Enforce UI rules on load
+        if (!isLaborNameType(base.laborType)) {
+          base.laborName = "";
+        }
         if (isManualCostType(base.laborType)) {
           return { ...base, laborHours: "NA" };
         }
@@ -105,7 +151,7 @@ export default function BoxViewLabor({ codeNumber = "7000", onBack }) {
         return base;
       });
 
-      mapped.push({ ...blank });
+      mapped.push({ ...blank }); // keep one blank row
 
       setRows(mapped);
       setDeletedIds([]);
@@ -116,19 +162,24 @@ export default function BoxViewLabor({ codeNumber = "7000", onBack }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [blank, codeNumber, computeCostForRow, isHourlyType, isLaborNameType, isManualCostType]);
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [codeNumber]);
+  }, [load]);
 
   const updateRow = (idx, patch) =>
     setRows((prev) =>
       prev.map((r, i) => {
         if (i !== idx) return r;
+
         const next = { ...r, ...patch };
         const t = String(next.laborType ?? "");
+
+        // ✅ If not Subcontractor, hard-clear laborName even if patch tries
+        if (!isLaborNameType(t)) {
+          next.laborName = "";
+        }
 
         // Hours changed on hourly types => recompute cost
         if ("laborHours" in patch && isHourlyType(t)) {
@@ -150,7 +201,9 @@ export default function BoxViewLabor({ codeNumber = "7000", onBack }) {
     );
 
   const setLaborType = (idx, nextType) =>
-    setRows((prev) => prev.map((r, i) => (i === idx ? normalizeRowAfterTypeChange(r, nextType) : r)));
+    setRows((prev) =>
+      prev.map((r, i) => (i === idx ? normalizeRowAfterTypeChange(r, nextType) : r))
+    );
 
   const addRow = () => setRows((prev) => [...prev, { ...blank }]);
 
@@ -164,50 +217,57 @@ export default function BoxViewLabor({ codeNumber = "7000", onBack }) {
     });
   };
 
-  const isEmpty = (r) => {
-    const t = String(r?.laborType ?? "");
-    const hasType = LABOR_TYPES.includes(t);
+  const isEmpty = useCallback(
+    (r) => {
+      const t = String(r?.laborType ?? "");
+      const hasType = LABOR_TYPES.includes(t);
 
-    if (!hasType) return !(r?.notes && r.notes.trim());
+      const hasNotes = !!(r?.notes && r.notes.trim());
+      const hasName = isLaborNameType(t) && !!(r?.laborName && r.laborName.trim());
 
-    if (isHourlyType(t)) {
-      const hasHours = r?.laborHours !== "" && r?.laborHours != null && r?.laborHours !== "NA";
-      const hasNotes = r?.notes && r.notes.trim();
-      return !(hasHours || hasNotes);
-    }
+      if (!hasType) return !(hasNotes); // no type: only notes counts
 
-    // Manual-cost types
-    const hasCost = r?.laborCost !== "" && r?.laborCost != null;
-    const hasNotes = r?.notes && r.notes.trim();
-    return !(hasCost || hasNotes);
-  };
+      if (isHourlyType(t)) {
+        const hasHours = r?.laborHours !== "" && r?.laborHours != null && r?.laborHours !== "NA";
+        return !(hasHours || hasNotes);
+      }
 
-  const toPayload = (r) => {
-    const laborType = r?.laborType ? String(r.laborType) : null;
-    const t = String(laborType ?? "");
+      // Manual-cost types
+      const hasCost = r?.laborCost !== "" && r?.laborCost != null;
+      return !(hasCost || hasNotes || hasName);
+    },
+    [isHourlyType, isLaborNameType]
+  );
 
-    let laborHours =
-      r.laborHours === "NA" || r.laborHours === "" || r.laborHours == null ? null : Number(r.laborHours);
+  const toPayload = useCallback(
+    (r) => {
+      const laborType = r?.laborType ? String(r.laborType) : null;
+      const t = String(laborType ?? "");
 
-    let laborCost =
-      r.laborCost === "" || r.laborCost == null ? null : Number(r.laborCost);
+      let laborHours =
+        r.laborHours === "NA" || r.laborHours === "" || r.laborHours == null
+          ? null
+          : Number(r.laborHours);
 
-    if (isHourlyType(t)) {
-      // enforce computed cost for hourly types
-      laborCost = Number(computeCostForRow(r));
-    } else if (isManualCostType(t)) {
-      // hours is not applicable for manual types
-      laborHours = null;
-    }
+      let laborCost = r.laborCost === "" || r.laborCost == null ? null : Number(r.laborCost);
 
-    return {
-      CodeNumber: String(codeNumber ?? ""),
-      LaborType: laborType, // "Welding" | "Mech" | "Service" | "Subcontractor" | "Engineering"
-      LaborHours: laborHours,
-      LaborCost: laborCost,
-      Notes: r.notes ? String(r.notes) : null,
-    };
-  };
+      if (isHourlyType(t)) {
+        laborCost = Number(computeCostForRow(r));
+      } else if (isManualCostType(t)) {
+        laborHours = null;
+      }
+
+      return {
+        CodeNumber: String(codeNumber ?? ""),
+        LaborName: isLaborNameType(t) && r.laborName ? String(r.laborName) : null, // ✅ only Subcontractor
+        LaborType: laborType,
+        LaborHours: laborHours,
+        LaborCost: laborCost,
+        Notes: r.notes ? String(r.notes) : null,
+      };
+    },
+    [codeNumber, computeCostForRow, isHourlyType, isLaborNameType, isManualCostType]
+  );
 
   const totals = useMemo(() => {
     return rows.reduce(
@@ -225,11 +285,9 @@ export default function BoxViewLabor({ codeNumber = "7000", onBack }) {
       },
       { hours: 0, cost: 0 }
     );
-  }, [rows]);
+  }, [rows, computeCostForRow, isEmpty, isHourlyType, isManualCostType, parseNum]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
+  const handleSubmit = useCallback(async () => {
     try {
       setSaving(true);
       setError(null);
@@ -271,156 +329,209 @@ export default function BoxViewLabor({ codeNumber = "7000", onBack }) {
         if (!postRes.ok) throw new Error(`POST failed: ${JSON.stringify(postJson)}`);
       }
 
-      alert("✅ Labor saved!");
-      await load();
+      return true;
     } catch (e2) {
       console.error("❌ Labor submit error:", e2);
       setError(e2.message || String(e2));
       alert("❌ Save failed: " + (e2.message || e2));
+      return false;
     } finally {
       setSaving(false);
     }
-  };
+  }, [deletedIds, isEmpty, rows, toPayload]);
+
+  // ✅ Home button submits every time, then goes back
+  const onHomeClick = useCallback(async () => {
+    if (saving) return;
+    const ok = await handleSubmit();
+    if (ok) {
+      alert("✅ Labor saved!");
+      await load();
+      onBack?.();
+    }
+  }, [handleSubmit, load, onBack, saving]);
 
   if (loading) return <p className="p-3">Loading…</p>;
   if (error) return <p className="p-3 text-danger">Error: {error}</p>;
 
+  const col = {
+    idx: { width: "3.25rem", whiteSpace: "nowrap" },
+    name: { width: "12rem" }, // only shown for Subcontractor
+    type: { width: "12rem" },
+    hours: { width: "7rem", whiteSpace: "nowrap" },
+    cost: { width: "9rem", whiteSpace: "nowrap" },
+    actions: { width: "7rem", whiteSpace: "nowrap" },
+  };
+
   return (
     <div className="container py-4">
+      {/* ✅ TOP BAR: Home submits, + adds row */}
       <div className="d-flex align-items-center justify-content-between mb-3">
-        <div>
-          
-          <div className="text-muted">Labor Input</div>
+        <button
+          type="button"
+          className="btn btn-dark"
+          onClick={onHomeClick}
+          disabled={saving}
+        >
+          {saving ? "Saving..." : "Home"}
+        </button>
+
+        <div className="text-center">
+          <div className="fw-semibold">Labor Input</div>
+          <div className="text-muted small">Code {String(codeNumber ?? "")}</div>
         </div>
 
-        <div className="d-flex gap-2">
-          <button type="button" className="btn btn-outline-primary" onClick={addRow}>
-            + Add Labor Row
-          </button>
-          <button type="button" className="btn btn-dark" onClick={onBack}>
-            Back
-          </button>
-        </div>
+        <button type="button" className="btn btn-outline-primary" onClick={addRow} title="Add row">
+          +
+        </button>
       </div>
 
-      <form onSubmit={handleSubmit}>
-        <div className="table-responsive">
-          <table className="table table-striped table-hover table-sm align-middle">
-            <thead className="table-dark">
-              <tr>
-                <th style={{ width: "4rem" }}>#</th>
-                <th style={{ width: "12rem" }}>Labor Type</th>
-                <th style={{ width: "8rem" }}>Hours</th>
-                <th style={{ width: "9rem" }}>Labor Cost</th>
-                <th>Notes</th>
-                <th style={{ width: "7rem" }}>Actions</th>
-              </tr>
-            </thead>
+      <div className="table-responsive">
+        <table className="table table-striped table-hover table-sm align-middle table-fixed">
+          <thead style={{ backgroundColor: "#0b2a4a" }}>
+            <tr>
+              <th style={{ ...col.idx, backgroundColor: "#0b2a4a", color: "white" }}>#</th>
 
-            <tbody>
-              {rows.map((r, i) => {
-                const t = String(r?.laborType ?? "");
-                const hourly = isHourlyType(t);
-                const manual = isManualCostType(t);
+              {/* ✅ Labor Name column exists, but we’ll render input only for Subcontractor rows */}
+              <th style={{ ...col.name, backgroundColor: "#0b2a4a", color: "white" }}>
+                Labor Name
+              </th>
 
-                const costValue = hourly ? computeCostForRow(r) : r.laborCost;
+              <th style={{ ...col.type, backgroundColor: "#0b2a4a", color: "white" }}>
+                Labor Type
+              </th>
+              <th style={{ ...col.hours, backgroundColor: "#0b2a4a", color: "white" }}>Hours</th>
+              <th style={{ ...col.cost, backgroundColor: "#0b2a4a", color: "white" }}>
+                Labor Cost
+              </th>
+              <th style={{ backgroundColor: "#0b2a4a", color: "white" }}>Notes</th>
+              <th style={{ ...col.actions, backgroundColor: "#0b2a4a", color: "white" }}>
+                Actions
+              </th>
+            </tr>
+          </thead>
 
-                return (
-                  <tr key={r.laborId || `new-${i}`}>
-                    <td>{i + 1}</td>
+          <tbody>
+            {rows.map((r, i) => {
+              const t = String(r?.laborType ?? "");
+              const hourly = isHourlyType(t);
+              const manual = isManualCostType(t);
+              const showName = isLaborNameType(t);
 
-                    <td>
-                      <select
-                        className="form-select form-select-sm"
-                        value={t}
-                        onChange={(e) => setLaborType(i, e.target.value)}
-                      >
-                        <option value="">Select…</option>
-                        {LABOR_TYPES.map((opt) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
+              const costValue = hourly ? computeCostForRow(r) : r.laborCost;
 
-                      <div className="text-muted small mt-1">
-                        {hourly ? `Rate: $${HOURLY_RATES[t]}/hr (Cost auto)` : manual ? "Manual cost" : ""}
-                      </div>
-                    </td>
+              return (
+                <tr key={r.laborId || `new-${i}`}>
+                  <td style={col.idx}>{i + 1}</td>
 
-                    <td>
-                      {hourly ? (
-                        <input
-                          className="form-control form-control-sm"
-                          type="number"
-                          step="0.25"
-                          min="0"
-                          value={r.laborHours === "NA" ? "" : r.laborHours}
-                          onChange={(e) => updateRow(i, { laborHours: e.target.value })}
-                          placeholder="0.00"
-                        />
-                      ) : (
-                        <span className="text-muted small">NA</span>
-                      )}
-                    </td>
+                  <td style={col.name}>
+                    {showName ? (
+                      <input
+                        className="form-control form-control-sm"
+                        value={r.laborName}
+                        onChange={(e) => updateRow(i, { laborName: e.target.value })}
+                        placeholder="Subcontractor name"
+                      />
+                    ) : (
+                      <span className="text-muted small">—</span>
+                    )}
+                  </td>
 
-                    <td>
+                  <td style={col.type}>
+                    <select
+                      className="form-select form-select-sm"
+                      value={t}
+                      onChange={(e) => setLaborType(i, e.target.value)}
+                    >
+                      <option value="">Select…</option>
+                      {LABOR_TYPES.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="text-muted small mt-1">
+                      {hourly
+                        ? `Rate: ${fmtMoney(HOURLY_RATES[t])}/hr (Cost auto)`
+                        : manual
+                        ? "Manual cost"
+                        : ""}
+                    </div>
+                  </td>
+
+                  <td style={col.hours}>
+                    {hourly ? (
                       <input
                         className="form-control form-control-sm"
                         type="number"
-                        step="0.01"
+                        step="0.25"
                         min="0"
-                        value={costValue}
-                        onChange={(e) => updateRow(i, { laborCost: e.target.value })}
+                        value={r.laborHours === "NA" ? "" : r.laborHours}
+                        onChange={(e) => updateRow(i, { laborHours: e.target.value })}
                         placeholder="0.00"
-                        readOnly={hourly} // ✅ computed for Welding/Mech/Service
                       />
-                    </td>
+                    ) : (
+                      <span className="text-muted small">NA</span>
+                    )}
+                  </td>
 
-                    <td>
-                      <input
-                        className="form-control form-control-sm"
-                        value={r.notes}
-                        onChange={(e) => updateRow(i, { notes: e.target.value })}
-                        placeholder="Optional notes…"
-                      />
-                    </td>
+                  <td style={col.cost}>
+                    <input
+                      className="form-control form-control-sm"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={costValue}
+                      onChange={(e) => updateRow(i, { laborCost: e.target.value })}
+                      placeholder="0.00"
+                      readOnly={hourly}
+                    />
+                  </td>
 
-                    <td>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-outline-danger"
-                        onClick={() => removeRow(i)}
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
+                  <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
+                    <input
+                      className="form-control form-control-sm"
+                      value={r.notes}
+                      onChange={(e) => updateRow(i, { notes: e.target.value })}
+                      placeholder="Optional notes…"
+                    />
+                  </td>
 
-            <tfoot className="table-secondary">
-              <tr>
-                <th colSpan={2}>Totals</th>
-                <th>{fmtHours(totals.hours)}</th>
-                <th>{fmtMoney(totals.cost)}</th>
-                <th colSpan={2}></th>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+                  <td style={col.actions}>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-danger"
+                      onClick={() => removeRow(i)}
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
 
-        <div className="d-flex gap-2 mt-3">
-          <button type="submit" className="btn btn-secondary" disabled={saving}>
-            {saving ? "Saving…" : "Submit changes"}
-          </button>
-        </div>
+          <tfoot className="table-secondary">
+            <tr>
+              <th colSpan={3}>Totals</th>
+              <th>{fmtHours(totals.hours)}</th>
+              <th>{fmtMoney(totals.cost)}</th>
+              <th colSpan={2}></th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
 
-        <div className="text-muted mt-2 small">
-          Note: Removing an existing row will delete it on submit.
-        </div>
-      </form>
+      <div className="text-muted mt-2 small">
+        Note: Removing an existing row will delete it on save.
+      </div>
+
+      <style>{`
+        .table-fixed { table-layout: fixed; width: 100%; }
+      `}</style>
     </div>
   );
 }
+
+

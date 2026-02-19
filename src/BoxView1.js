@@ -28,7 +28,8 @@ function GridRow({
   onRemove,
   removable = false,
 }) {
-  const handle = (field) => (e) => onChange({ ...value, [field]: e.target.value });
+  const handle = (field) => (e) =>
+    onChange({ ...value, [field]: e.target.value });
 
   return (
     <div className="card mb-3">
@@ -53,7 +54,11 @@ function GridRow({
         </div>
 
         {removable && (
-          <button type="button" className="btn btn-sm btn-outline-danger" onClick={onRemove}>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-danger"
+            onClick={onRemove}
+          >
             Remove
           </button>
         )}
@@ -158,7 +163,8 @@ function Section({ idx, options, onChange, onRemoveSection }) {
           <h6 className="mb-0">Item {idx + 1}</h6>
 
           <span className="text-muted small">
-            {Math.max(0, options.length - 1)} alternate{options.length - 1 === 1 ? "" : "s"}
+            {Math.max(0, options.length - 1)} alternate
+            {options.length - 1 === 1 ? "" : "s"}
           </span>
         </div>
 
@@ -204,7 +210,11 @@ function Section({ idx, options, onChange, onRemoveSection }) {
             className="btn btn-primary btn-sm"
             onClick={addAlternate}
             disabled={options.length - 1 >= MAX_ALTS}
-            title={options.length - 1 >= MAX_ALTS ? "Reached max alternates" : "Add alternate"}
+            title={
+              options.length - 1 >= MAX_ALTS
+                ? "Reached max alternates"
+                : "Add alternate"
+            }
           >
             + Add Alternate
           </button>
@@ -223,6 +233,7 @@ export default function BoxView1({ number, onBack }) {
   ];
 
   const [sections, setSections] = React.useState([]);
+  const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     async function loadPrimariesAndAlternates() {
@@ -254,7 +265,9 @@ export default function BoxView1({ number, onBack }) {
               );
               if (altRes.ok) {
                 const altData = await altRes.json();
-                const altRows = Array.isArray(altData?.sample) ? altData.sample : [];
+                const altRows = Array.isArray(altData?.sample)
+                  ? altData.sample
+                  : [];
 
                 alternates = altRows.map((a) => ({
                   description: a.Description ?? "",
@@ -288,24 +301,18 @@ export default function BoxView1({ number, onBack }) {
     loadPrimariesAndAlternates();
   }, []);
 
-  const addSection = () => setSections((s) => [...s, starter.map((o) => ({ ...o }))]);
+  const addSection = () =>
+    setSections((s) => [...s, starter.map((o) => ({ ...o }))]);
 
   const updateSection = (sectionIndex, nextOptions) =>
-    setSections((s) => s.map((opts, i) => (i === sectionIndex ? nextOptions : opts)));
-
-  const removeSection = (sectionIndex) => setSections((s) => s.filter((_, i) => i !== sectionIndex));
-
-  function isEmptySlot(item) {
-    return (
-      (!item.description || item.description.trim() === "") &&
-      (!item.supplier || item.supplier.trim() === "") &&
-      (!item.cost || item.cost === "" || item.cost == null) &&
-      (!item.notes || item.notes.trim() === "")
+    setSections((s) =>
+      s.map((opts, i) => (i === sectionIndex ? nextOptions : opts))
     );
-  }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const removeSection = (sectionIndex) =>
+    setSections((s) => s.filter((_, i) => i !== sectionIndex));
+
+  const handleSubmit = async () => {
     console.log("Code", number, "-> payload:", sections);
 
     const isEmpty = (it) =>
@@ -345,7 +352,9 @@ export default function BoxView1({ number, onBack }) {
 
           const equipUpdateData = await equipUpdateRes.json().catch(() => ({}));
           if (!equipUpdateRes.ok) {
-            throw new Error(`Equipment UPDATE failed: ${JSON.stringify(equipUpdateData)}`);
+            throw new Error(
+              `Equipment UPDATE failed: ${JSON.stringify(equipUpdateData)}`
+            );
           }
 
           // 2) Handle alternates
@@ -357,7 +366,9 @@ export default function BoxView1({ number, onBack }) {
             // Existing alternate → UPDATE
             if (alt.isExistingAlt && alt.alternateId) {
               const altUpdateRes = await fetch(
-                `${API_BASE}/equipment/alternates/${encodeURIComponent(alt.alternateId)}`,
+                `${API_BASE}/equipment/alternates/${encodeURIComponent(
+                  alt.alternateId
+                )}`,
                 {
                   method: "PUT",
                   headers: { "Content-Type": "application/json" },
@@ -368,9 +379,13 @@ export default function BoxView1({ number, onBack }) {
                 }
               );
 
-              const altUpdateData = await altUpdateRes.json().catch(() => ({}));
+              const altUpdateData = await altUpdateRes
+                .json()
+                .catch(() => ({}));
               if (!altUpdateRes.ok) {
-                throw new Error(`Alternate UPDATE failed: ${JSON.stringify(altUpdateData)}`);
+                throw new Error(
+                  `Alternate UPDATE failed: ${JSON.stringify(altUpdateData)}`
+                );
               }
               continue;
             }
@@ -388,7 +403,10 @@ export default function BoxView1({ number, onBack }) {
               });
 
               const altData = await altRes.json().catch(() => ({}));
-              if (!altRes.ok) throw new Error(`Alternate POST failed: ${JSON.stringify(altData)}`);
+              if (!altRes.ok)
+                throw new Error(
+                  `Alternate POST failed: ${JSON.stringify(altData)}`
+                );
             }
           }
 
@@ -403,10 +421,12 @@ export default function BoxView1({ number, onBack }) {
         });
 
         const equipData = await equipRes.json().catch(() => ({}));
-        if (!equipRes.ok) throw new Error(`Equipment POST failed: ${JSON.stringify(equipData)}`);
+        if (!equipRes.ok)
+          throw new Error(`Equipment POST failed: ${JSON.stringify(equipData)}`);
 
         const equipmentId = equipData.EquipmentId || equipData.equipmentId || equipData.id;
-        if (!equipmentId) throw new Error("EquipmentId missing from equipment POST response");
+        if (!equipmentId)
+          throw new Error("EquipmentId missing from equipment POST response");
 
         const alts = row.slice(1);
         for (const alt of alts) {
@@ -423,23 +443,58 @@ export default function BoxView1({ number, onBack }) {
           });
 
           const altData = await altRes.json().catch(() => ({}));
-          if (!altRes.ok) throw new Error(`Alternate POST failed: ${JSON.stringify(altData)}`);
+          if (!altRes.ok)
+            throw new Error(`Alternate POST failed: ${JSON.stringify(altData)}`);
         }
       }
 
-      alert("✅ Submitted changes (updated existing + created new items)!");
+      return true;
     } catch (err) {
       console.error("❌ Submit error:", err);
       alert("❌ Submit failed: " + (err.message || err));
+      return false;
+    }
+  };
+
+  // ✅ Home button now submits every time, then goes home
+  const handleHomeClick = async () => {
+    if (submitting) return;
+
+    try {
+      setSubmitting(true);
+      const ok = await handleSubmit();
+      if (ok) {
+        alert("✅ Submitted changes!");
+        onBack?.();
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <div className="container py-4">
-      <h2>Code {number}</h2>
-      <p>Equipment</p>
+      {/* ✅ HOME BUTTON ON TOP */}
+      <div className="d-flex align-items-center justify-content-between mb-3">
+        <button
+          type="button"
+          className="btn btn-dark"
+          onClick={handleHomeClick}
+          disabled={submitting}
+        >
+          {submitting ? "Submitting..." : "Home"}
+        </button>
 
-      <form onSubmit={handleSubmit}>
+        <div>
+          <h2 className="mb-0">Code {number}</h2>
+          <p className="mb-0 text-muted">Equipment</p>
+        </div>
+
+        <div style={{ width: "90px" }} />
+      </div>
+
+      {/* form no longer needs onSubmit */}
+      <form>
         {sections.map((opts, i) => (
           <Section
             key={i}
@@ -451,19 +506,16 @@ export default function BoxView1({ number, onBack }) {
         ))}
 
         <div className="d-flex flex-wrap gap-2 mb-4">
-          <button type="button" className="btn btn-outline-primary" onClick={addSection}>
-            + Add Item (starts with 2 alts)
-          </button>
-
-          <button type="submit" className="btn btn-secondary">
-            Submit changes
+          <button
+            type="button"
+            className="btn btn-outline-primary"
+            onClick={addSection}
+          >
+            + Add Item
           </button>
         </div>
       </form>
-
-      <button className="btn btn-dark" onClick={onBack}>
-        Back to Home
-      </button>
     </div>
   );
 }
+
