@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 const API_BASE =
@@ -14,12 +14,67 @@ const HOURLY_RATES = {
 // ✅ All dropdown options (stored in LaborType)
 const LABOR_TYPES = ["Welding", "Mech", "Service", "Subcontractor", "Engineering"];
 
-export default function BoxViewLabor({ codeNumber = "2000", onBack }) {
+// -------------------------
+// reportId helpers (match other viewers)
+// -------------------------
+const isGuid = (v) =>
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
+    String(v || "").trim().replace(/[{}]/g, "")
+  );
+
+const normalizeGuid = (v) => {
+  const s = String(v || "").trim().replace(/[{}]/g, "");
+  return isGuid(s) ? s.toLowerCase() : "";
+};
+
+export default function BoxViewLabor({
+  codeNumber = "2000",
+  onBack,
+  reportId: reportIdProp,
+}) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [deletedIds, setDeletedIds] = useState([]);
+
+  // ✅ reportId resolution: prop -> window.__REPORT_ID__ -> localStorage("ccms_report_id")
+  const reportId = useMemo(() => {
+    const fromProp = normalizeGuid(reportIdProp);
+    if (fromProp) return fromProp;
+
+    const fromGlobal = normalizeGuid(window.__REPORT_ID__);
+    if (fromGlobal) return fromGlobal;
+
+    const fromLS = normalizeGuid(localStorage.getItem("ccms_report_id"));
+    if (fromLS) return fromLS;
+
+    return "";
+  }, [reportIdProp]);
+
+  const withReport = useCallback(
+    (url) => {
+      if (!reportId) return url;
+      const hasQ = url.includes("?");
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+    },
+    [reportId]
+  );
+
+  const fetchJson = useCallback(
+    async (url, opts = {}) => {
+      const headers = {
+        ...(opts.headers || {}),
+        "Content-Type": "application/json",
+        ...(reportId ? { "x-report-id": reportId } : {}),
+      };
+
+      const res = await fetch(url, { ...opts, headers });
+      const data = await res.json().catch(() => ({}));
+      return { res, data };
+    },
+    [reportId]
+  );
 
   const blank = useMemo(
     () => ({
@@ -34,53 +89,81 @@ export default function BoxViewLabor({ codeNumber = "2000", onBack }) {
     [codeNumber]
   );
 
-  const parseNum = (val) => {
+  const parseNum = useCallback((val) => {
     const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
     return isNaN(n) ? 0 : n;
-  };
-  const fmtMoney = (n) => `$${parseNum(n).toFixed(2)}`;
-  const fmtHours = (n) => parseNum(n).toFixed(2);
+  }, []);
 
-  const isHourlyType = (t) => Object.prototype.hasOwnProperty.call(HOURLY_RATES, String(t || ""));
-  const isManualCostType = (t) => String(t) === "Subcontractor" || String(t) === "Engineering";
+  const fmtMoney = useCallback((n) => `$${parseNum(n).toFixed(2)}`, [parseNum]);
+  const fmtHours = useCallback((n) => parseNum(n).toFixed(2), [parseNum]);
 
-  const computeCostForRow = (r) => {
-    const t = String(r?.laborType ?? "");
-    if (!isHourlyType(t)) return r?.laborCost ?? "";
-    const rate = HOURLY_RATES[t];
-    const hours = parseNum(r?.laborHours);
-    return (hours * rate).toFixed(2);
-  };
+  const isHourlyType = useCallback(
+    (t) => Object.prototype.hasOwnProperty.call(HOURLY_RATES, String(t || "")),
+    []
+  );
 
-  const normalizeRowAfterTypeChange = (r, nextType) => {
-    const t = String(nextType || "");
-    // Manual-cost types: hours should display as NA and payload hours should be null
-    if (isManualCostType(t)) {
-      return { ...r, laborType: t, laborHours: "NA" };
-    }
+  const isManualCostType = useCallback(
+    (t) => String(t) === "Subcontractor" || String(t) === "Engineering",
+    []
+  );
 
-    // Hourly types: hours should be editable; if it was NA, clear it
-    if (isHourlyType(t)) {
-      const next = { ...r, laborType: t, laborHours: r.laborHours === "NA" ? "" : r.laborHours };
-      return { ...next, laborCost: computeCostForRow(next) };
-    }
+  const computeCostForRow = useCallback(
+    (r) => {
+      const t = String(r?.laborType ?? "");
+      if (!isHourlyType(t)) return r?.laborCost ?? "";
+      const rate = HOURLY_RATES[t];
+      const hours = parseNum(r?.laborHours);
+      return (hours * rate).toFixed(2);
+    },
+    [isHourlyType, parseNum]
+  );
 
-    return { ...r, laborType: t };
-  };
+  const normalizeRowAfterTypeChange = useCallback(
+    (r, nextType) => {
+      const t = String(nextType || "");
 
-  const load = async () => {
+      // Manual-cost types: hours should display as NA and payload hours should be null
+      if (isManualCostType(t)) {
+        return { ...r, laborType: t, laborHours: "NA" };
+      }
+
+      // Hourly types: hours should be editable; if it was NA, clear it
+      if (isHourlyType(t)) {
+        const next = {
+          ...r,
+          laborType: t,
+          laborHours: r.laborHours === "NA" ? "" : r.laborHours,
+        };
+        return { ...next, laborCost: computeCostForRow(next) };
+      }
+
+      return { ...r, laborType: t };
+    },
+    [computeCostForRow, isHourlyType, isManualCostType]
+  );
+
+  const load = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const res = await fetch(`${API_BASE}/labor/code/${encodeURIComponent(String(codeNumber))}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
+      if (!reportId) {
+        setRows([{ ...blank }]);
+        setDeletedIds([]);
+        setError("Missing reportId (required).");
+        return;
+      }
 
-      const list = Array.isArray(json)
-        ? json
-        : Array.isArray(json?.sample)
-        ? json.sample
+      const { res, data } = await fetchJson(
+        withReport(`${API_BASE}/labor/code/${encodeURIComponent(String(codeNumber))}`),
+        { method: "GET" }
+      );
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.sample)
+        ? data.sample
         : [];
 
       const mapped = list.map((r) => {
@@ -116,12 +199,22 @@ export default function BoxViewLabor({ codeNumber = "2000", onBack }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    API_BASE,
+    blank,
+    codeNumber,
+    computeCostForRow,
+    fetchJson,
+    isHourlyType,
+    isManualCostType,
+    reportId,
+    withReport,
+  ]);
 
+  // ✅ IMPORTANT: reload when reportId changes (this is why code1000 updates but code2000 didn't)
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [codeNumber]);
+  }, [load]);
 
   const updateRow = (idx, patch) =>
     setRows((prev) =>
@@ -131,26 +224,22 @@ export default function BoxViewLabor({ codeNumber = "2000", onBack }) {
         const t = String(next.laborType ?? "");
 
         // Hours changed on hourly types => recompute cost
-        if ("laborHours" in patch && isHourlyType(t)) {
-          next.laborCost = computeCostForRow(next);
-        }
+        if ("laborHours" in patch && isHourlyType(t)) next.laborCost = computeCostForRow(next);
 
         // Cost edits on hourly types => ignore (computed)
-        if ("laborCost" in patch && isHourlyType(t)) {
-          next.laborCost = computeCostForRow(next);
-        }
+        if ("laborCost" in patch && isHourlyType(t)) next.laborCost = computeCostForRow(next);
 
         // Prevent editing hours for manual-cost types (keep NA)
-        if ("laborHours" in patch && isManualCostType(t)) {
-          next.laborHours = "NA";
-        }
+        if ("laborHours" in patch && isManualCostType(t)) next.laborHours = "NA";
 
         return next;
       })
     );
 
   const setLaborType = (idx, nextType) =>
-    setRows((prev) => prev.map((r, i) => (i === idx ? normalizeRowAfterTypeChange(r, nextType) : r)));
+    setRows((prev) =>
+      prev.map((r, i) => (i === idx ? normalizeRowAfterTypeChange(r, nextType) : r))
+    );
 
   const addRow = () => setRows((prev) => [...prev, { ...blank }]);
 
@@ -164,50 +253,57 @@ export default function BoxViewLabor({ codeNumber = "2000", onBack }) {
     });
   };
 
-  const isEmpty = (r) => {
-    const t = String(r?.laborType ?? "");
-    const hasType = LABOR_TYPES.includes(t);
+  const isEmpty = useCallback(
+    (r) => {
+      const t = String(r?.laborType ?? "");
+      const hasType = LABOR_TYPES.includes(t);
 
-    if (!hasType) return !(r?.notes && r.notes.trim());
+      if (!hasType) return !(r?.notes && r.notes.trim());
 
-    if (isHourlyType(t)) {
-      const hasHours = r?.laborHours !== "" && r?.laborHours != null && r?.laborHours !== "NA";
+      if (isHourlyType(t)) {
+        const hasHours =
+          r?.laborHours !== "" && r?.laborHours != null && r?.laborHours !== "NA";
+        const hasNotes = r?.notes && r.notes.trim();
+        return !(hasHours || hasNotes);
+      }
+
+      // Manual-cost types
+      const hasCost = r?.laborCost !== "" && r?.laborCost != null;
       const hasNotes = r?.notes && r.notes.trim();
-      return !(hasHours || hasNotes);
-    }
+      return !(hasCost || hasNotes);
+    },
+    [isHourlyType]
+  );
 
-    // Manual-cost types
-    const hasCost = r?.laborCost !== "" && r?.laborCost != null;
-    const hasNotes = r?.notes && r.notes.trim();
-    return !(hasCost || hasNotes);
-  };
+  const toPayload = useCallback(
+    (r) => {
+      const laborType = r?.laborType ? String(r.laborType) : null;
+      const t = String(laborType ?? "");
 
-  const toPayload = (r) => {
-    const laborType = r?.laborType ? String(r.laborType) : null;
-    const t = String(laborType ?? "");
+      let laborHours =
+        r.laborHours === "NA" || r.laborHours === "" || r.laborHours == null
+          ? null
+          : Number(r.laborHours);
 
-    let laborHours =
-      r.laborHours === "NA" || r.laborHours === "" || r.laborHours == null ? null : Number(r.laborHours);
+      let laborCost = r.laborCost === "" || r.laborCost == null ? null : Number(r.laborCost);
 
-    let laborCost =
-      r.laborCost === "" || r.laborCost == null ? null : Number(r.laborCost);
+      if (isHourlyType(t)) {
+        laborCost = Number(computeCostForRow(r));
+      } else if (isManualCostType(t)) {
+        laborHours = null;
+      }
 
-    if (isHourlyType(t)) {
-      // enforce computed cost for hourly types
-      laborCost = Number(computeCostForRow(r));
-    } else if (isManualCostType(t)) {
-      // hours is not applicable for manual types
-      laborHours = null;
-    }
-
-    return {
-      CodeNumber: String(codeNumber ?? ""),
-      LaborType: laborType, // "Welding" | "Mech" | "Service" | "Subcontractor" | "Engineering"
-      LaborHours: laborHours,
-      LaborCost: laborCost,
-      Notes: r.notes ? String(r.notes) : null,
-    };
-  };
+      return {
+        reportId, // ✅ required for POST/PUT per your backend rules
+        CodeNumber: String(codeNumber ?? ""),
+        LaborType: laborType,
+        LaborHours: laborHours,
+        LaborCost: laborCost,
+        Notes: r.notes ? String(r.notes) : null,
+      };
+    },
+    [codeNumber, computeCostForRow, isHourlyType, isManualCostType, reportId]
+  );
 
   const totals = useMemo(() => {
     return rows.reduce(
@@ -225,7 +321,7 @@ export default function BoxViewLabor({ codeNumber = "2000", onBack }) {
       },
       { hours: 0, cost: 0 }
     );
-  }, [rows]);
+  }, [rows, computeCostForRow, isEmpty, isHourlyType, isManualCostType, parseNum]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -234,14 +330,19 @@ export default function BoxViewLabor({ codeNumber = "2000", onBack }) {
       setSaving(true);
       setError(null);
 
-      // 1) Delete removed existing rows
+      if (!reportId) {
+        alert("❌ Missing reportId (required).");
+        return;
+      }
+
+      // 1) Delete removed existing rows (DELETE uses query/header)
       for (const id of deletedIds) {
-        const delRes = await fetch(`${API_BASE}/labor/${encodeURIComponent(id)}`, {
-          method: "DELETE",
-        });
-        if (!delRes.ok) {
-          const t = await delRes.text();
-          throw new Error(`DELETE failed for ${id}: ${t}`);
+        const { res, data } = await fetchJson(
+          withReport(`${API_BASE}/labor/${encodeURIComponent(id)}`),
+          { method: "DELETE" }
+        );
+        if (!res.ok) {
+          throw new Error(data?.error || `DELETE failed for ${id} (HTTP ${res.status})`);
         }
       }
 
@@ -251,24 +352,20 @@ export default function BoxViewLabor({ codeNumber = "2000", onBack }) {
 
         // Existing -> PUT
         if (r.isExisting && r.laborId) {
-          const putRes = await fetch(`${API_BASE}/labor/${encodeURIComponent(r.laborId)}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(toPayload(r)),
-          });
-          const putJson = await putRes.json().catch(() => ({}));
-          if (!putRes.ok) throw new Error(`PUT failed: ${JSON.stringify(putJson)}`);
+          const { res, data } = await fetchJson(
+            withReport(`${API_BASE}/labor/${encodeURIComponent(r.laborId)}`),
+            { method: "PUT", body: JSON.stringify(toPayload(r)) }
+          );
+          if (!res.ok) throw new Error(data?.error || `PUT failed (HTTP ${res.status})`);
           continue;
         }
 
         // New -> POST
-        const postRes = await fetch(`${API_BASE}/labor`, {
+        const { res, data } = await fetchJson(withReport(`${API_BASE}/labor`), {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(toPayload(r)),
         });
-        const postJson = await postRes.json().catch(() => ({}));
-        if (!postRes.ok) throw new Error(`POST failed: ${JSON.stringify(postJson)}`);
+        if (!res.ok) throw new Error(data?.error || `POST failed (HTTP ${res.status})`);
       }
 
       alert("✅ Labor saved!");
@@ -289,8 +386,15 @@ export default function BoxViewLabor({ codeNumber = "2000", onBack }) {
     <div className="container py-4">
       <div className="d-flex align-items-center justify-content-between mb-3">
         <div>
-          
           <div className="text-muted">Labor Input</div>
+          <div className="small text-muted">
+            Report:{" "}
+            {reportId ? (
+              <span className="font-monospace">{reportId}</span>
+            ) : (
+              <span className="text-danger">missing reportId</span>
+            )}
+          </div>
         </div>
 
         <div className="d-flex gap-2">
@@ -344,7 +448,11 @@ export default function BoxViewLabor({ codeNumber = "2000", onBack }) {
                       </select>
 
                       <div className="text-muted small mt-1">
-                        {hourly ? `Rate: $${HOURLY_RATES[t]}/hr (Cost auto)` : manual ? "Manual cost" : ""}
+                        {hourly
+                          ? `Rate: $${HOURLY_RATES[t]}/hr (Cost auto)`
+                          : manual
+                          ? "Manual cost"
+                          : ""}
                       </div>
                     </td>
 
@@ -412,7 +520,7 @@ export default function BoxViewLabor({ codeNumber = "2000", onBack }) {
         </div>
 
         <div className="d-flex gap-2 mt-3">
-          <button type="submit" className="btn btn-secondary" disabled={saving}>
+          <button type="submit" className="btn btn-secondary" disabled={saving || !reportId}>
             {saving ? "Saving…" : "Submit changes"}
           </button>
         </div>

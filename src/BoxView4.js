@@ -1,13 +1,26 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 
-const API_BASE = "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
+const API_BASE =
+  "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
 const blank = { description: "", supplier: "", cost: "", notes: "" };
-const blankAlt = { ...blank, used: false, isExistingAlt: false, alternateId: undefined };
+const blankAlt = {
+  ...blank,
+  used: false,
+  isExistingAlt: false,
+  alternateId: undefined,
+};
 
 // ---------- Reusable row ----------
-function GridRow({ label, value, onChange, showUsed = false, onRemove, removable = false }) {
+function GridRow({
+  label,
+  value,
+  onChange,
+  showUsed = false,
+  onRemove,
+  removable = false,
+}) {
   const handle = (field) => (e) => onChange({ ...value, [field]: e.target.value });
 
   return (
@@ -33,7 +46,11 @@ function GridRow({ label, value, onChange, showUsed = false, onRemove, removable
         </div>
 
         {removable && (
-          <button type="button" className="btn btn-sm btn-outline-danger" onClick={onRemove}>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-danger"
+            onClick={onRemove}
+          >
             Remove
           </button>
         )}
@@ -135,7 +152,8 @@ function Section({ idx, options, onChange, onRemoveSection }) {
           <h6 className="mb-0">Item {idx + 1}</h6>
 
           <span className="text-muted small">
-            {Math.max(0, options.length - 1)} alternate{options.length - 1 === 1 ? "" : "s"}
+            {Math.max(0, options.length - 1)} alternate
+            {options.length - 1 === 1 ? "" : "s"}
           </span>
         </div>
 
@@ -181,7 +199,9 @@ function Section({ idx, options, onChange, onRemoveSection }) {
             className="btn btn-primary btn-sm"
             onClick={addAlternate}
             disabled={options.length - 1 >= MAX_ALTS}
-            title={options.length - 1 >= MAX_ALTS ? "Reached max alternates" : "Add alternate"}
+            title={
+              options.length - 1 >= MAX_ALTS ? "Reached max alternates" : "Add alternate"
+            }
           >
             + Add Alternate
           </button>
@@ -193,118 +213,206 @@ function Section({ idx, options, onChange, onRemoveSection }) {
 
 // =====================================================
 // AIRDISTRIBUTION EDITOR (Primary + AlternateAirDistribution)
+// Home-only (saves+back), no submit button
 // =====================================================
-export default function BoxView4({ number, onBack }) {
-  const starter = [
-    { ...blank, isExisting: false, airDistributionId: undefined },
-    { ...blankAlt },
-    { ...blankAlt },
-  ];
+export default function BoxView4({ number, onBack, reportId: reportIdProp }) {
+  const starter = useMemo(
+    () => [
+      { ...blank, isExisting: false, airDistributionId: undefined },
+      { ...blankAlt },
+      { ...blankAlt },
+    ],
+    []
+  );
 
-  const [sections, setSections] = React.useState([]);
-
-  React.useEffect(() => {
-    async function loadPrimariesAndAlternates() {
-      try {
-        // ✅ AirDistribution primaries
-        const res = await fetch(`${API_BASE}/airdistribution`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const rows = await res.json(); // expected: array of { AirDistributionId, Description, ... }
-
-        const formatted = await Promise.all(
-          (Array.isArray(rows) ? rows : []).map(async (r) => {
-            const airDistributionId = r.AirDistributionId;
-
-            const primary = {
-              description: r.Description ?? "",
-              supplier: r.Supplier ?? "",
-              cost: r.Cost ?? "",
-              notes: r.Notes ?? "",
-              isExisting: true,
-              airDistributionId,
-            };
-
-            // ✅ AlternateAirDistribution rows for this AirDistributionId
-            let alternates = [];
-            try {
-              const altRes = await fetch(
-                `${API_BASE}/airdistribution/alternates/${encodeURIComponent(airDistributionId)}`
-              );
-
-              if (altRes.ok) {
-                const altJson = await altRes.json();
-                const altRows = Array.isArray(altJson)
-                  ? altJson
-                  : Array.isArray(altJson?.sample)
-                  ? altJson.sample
-                  : [];
-
-                alternates = altRows.map((a) => ({
-                  description: a.Description ?? "",
-                  supplier: a.Supplier ?? "",
-                  cost: a.Cost ?? "",
-                  notes: a.Notes ?? "",
-                  used: Number(a.IsUsed) === 1,
-                  isExistingAlt: true,
-                  alternateId: a.AlternateId,
-                }));
-              }
-            } catch (err) {
-              console.warn("Failed to load alternates for", airDistributionId, err);
-            }
-
-            // always add a blank “new alt” slot at end
-            alternates.push({ ...blankAlt });
-
-            return [primary, ...alternates];
-          })
-        );
-
-        setSections(formatted);
-      } catch (err) {
-        console.error("Failed to load airdistribution:", err);
-        setSections([]);
-      }
-    }
-
-    loadPrimariesAndAlternates();
+  // -------------------------
+  // reportId helpers (TEMPLATE)
+  // -------------------------
+  const isGuid = useCallback((v) => {
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
+      String(v || "").trim().replace(/[{}]/g, "")
+    );
   }, []);
 
-  const addSection = () => setSections((s) => [...s, starter.map((o) => ({ ...o }))]);
+  const normalizeGuid = useCallback(
+    (v) => {
+      const s = String(v || "").trim().replace(/[{}]/g, "");
+      return isGuid(s) ? s.toLowerCase() : "";
+    },
+    [isGuid]
+  );
 
-  const updateSection = (sectionIndex, nextOptions) =>
+  const reportId = useMemo(() => {
+    const fromProp = normalizeGuid(reportIdProp);
+    if (fromProp) return fromProp;
+
+    const fromGlobal = normalizeGuid(window.__REPORT_ID__);
+    if (fromGlobal) return fromGlobal;
+
+    const fromLS = normalizeGuid(localStorage.getItem("ccms_report_id"));
+    if (fromLS) return fromLS;
+
+    return "";
+  }, [reportIdProp, normalizeGuid]);
+
+  const withReport = useCallback(
+    (url) => {
+      if (!reportId) return url;
+      const hasQ = url.includes("?");
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+    },
+    [reportId]
+  );
+
+  const fetchJson = useCallback(
+    async (url, opts = {}) => {
+      const headers = {
+        ...(opts.headers || {}),
+        "Content-Type": "application/json",
+        ...(reportId ? { "x-report-id": reportId } : {}),
+      };
+
+      const res = await fetch(url, { ...opts, headers });
+      const data = await res.json().catch(() => ({}));
+      return { res, data };
+    },
+    [reportId]
+  );
+
+  const [sections, setSections] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const addSection = useCallback(() => {
+    setSections((s) => [...s, starter.map((o) => ({ ...o }))]);
+  }, [starter]);
+
+  const updateSection = useCallback((sectionIndex, nextOptions) => {
     setSections((s) => s.map((opts, i) => (i === sectionIndex ? nextOptions : opts)));
+  }, []);
 
-  const removeSection = (sectionIndex) => setSections((s) => s.filter((_, i) => i !== sectionIndex));
+  const removeSection = useCallback((sectionIndex) => {
+    setSections((s) => s.filter((_, i) => i !== sectionIndex));
+  }, []);
 
-  const isEmpty = (it) =>
-    (!it?.description || !it.description.trim()) &&
-    (!it?.supplier || !it.supplier.trim()) &&
-    (!it?.cost && it?.cost !== 0) &&
-    (!it?.notes || !it.notes.trim());
+  const isEmpty = useCallback((it) => {
+    return (
+      (!it?.description || !it.description.trim()) &&
+      (!it?.supplier || !it.supplier.trim()) &&
+      (!it?.cost && it?.cost !== 0) &&
+      (!it?.notes || !it.notes.trim())
+    );
+  }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    console.log("Code", number, "-> payload:", sections);
-
+  // -------------------------
+  // LOAD primaries + alternates (report-scoped)
+  // -------------------------
+  const load = useCallback(async () => {
     try {
-      for (const row of sections) {
-        const primary = row?.[0];
-        if (!primary || isEmpty(primary)) continue;
+      setLoading(true);
+      setError(null);
 
-        // ============================
-        // CASE 1: Existing AirDistribution
-        // ============================
-        if (primary.isExisting && primary.airDistributionId) {
-          const airDistributionId = primary.airDistributionId;
+      if (!reportId) {
+        setSections([]);
+        setError("Missing reportId (required).");
+        return;
+      }
 
-          // 1) UPDATE primary
-          const updRes = await fetch(
-            `${API_BASE}/airdistribution/${encodeURIComponent(airDistributionId)}`,
+      const { res, data } = await fetchJson(withReport(`${API_BASE}/airdistribution`), {
+        method: "GET",
+      });
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      const rows = Array.isArray(data) ? data : Array.isArray(data?.sample) ? data.sample : [];
+
+      const formatted = await Promise.all(
+        rows.map(async (r) => {
+          const airDistributionId = r.AirDistributionId;
+
+          const primary = {
+            description: r.Description ?? "",
+            supplier: r.Supplier ?? "",
+            cost: r.Cost ?? "",
+            notes: r.Notes ?? "",
+            isExisting: true,
+            airDistributionId,
+          };
+
+          let alternates = [];
+          try {
+            const { res: altRes, data: altJson } = await fetchJson(
+              withReport(
+                `${API_BASE}/airdistribution/alternates/${encodeURIComponent(
+                  airDistributionId
+                )}`
+              ),
+              { method: "GET" }
+            );
+
+            if (altRes.ok) {
+              const altRows = Array.isArray(altJson)
+                ? altJson
+                : Array.isArray(altJson?.sample)
+                ? altJson.sample
+                : [];
+
+              alternates = altRows.map((a) => ({
+                description: a.Description ?? "",
+                supplier: a.Supplier ?? "",
+                cost: a.Cost ?? "",
+                notes: a.Notes ?? "",
+                used: Number(a.IsUsed) === 1 || a.IsUsed === true,
+                isExistingAlt: true,
+                alternateId: a.AlternateId,
+              }));
+            }
+          } catch (err) {
+            console.warn("Failed to load alternates for", airDistributionId, err);
+          }
+
+          alternates.push({ ...blankAlt });
+          return [primary, ...alternates];
+        })
+      );
+
+      setSections(formatted.length ? formatted : [starter.map((o) => ({ ...o }))]);
+    } catch (e) {
+      setError(e.message || String(e));
+      setSections([starter.map((o) => ({ ...o }))]);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchJson, reportId, starter, withReport]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // -------------------------
+  // SUBMIT helper (Home button uses this)
+  // -------------------------
+  const submitAll = useCallback(async () => {
+    if (!reportId) throw new Error("Missing reportId (required).");
+
+    for (const row of sections) {
+      const primary = row?.[0];
+      if (!primary || isEmpty(primary)) continue;
+
+      // ============================
+      // CASE 1: Existing AirDistribution
+      // ============================
+      if (primary.isExisting && primary.airDistributionId) {
+        const airDistributionId = primary.airDistributionId;
+
+        // UPDATE primary
+        {
+          const { res: updRes, data: updData } = await fetchJson(
+            withReport(`${API_BASE}/airdistribution/${encodeURIComponent(airDistributionId)}`),
             {
               method: "PUT",
-              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
+                reportId,
                 Description: String(primary.description ?? ""),
                 Supplier: String(primary.supplier ?? ""),
                 Cost: String(primary.cost ?? ""),
@@ -313,45 +421,50 @@ export default function BoxView4({ number, onBack }) {
             }
           );
 
-          const updData = await updRes.json().catch(() => ({}));
           if (!updRes.ok) {
             throw new Error(`AirDistribution UPDATE failed: ${JSON.stringify(updData)}`);
           }
+        }
 
-          // 2) Alternates: update existing, post new
-          for (const alt of row.slice(1)) {
-            if (!alt || isEmpty(alt)) continue;
+        // Alternates: update existing, post new
+        for (const alt of row.slice(1)) {
+          if (!alt || isEmpty(alt)) continue;
 
-            // Existing alternate -> PUT
-            if (alt.isExistingAlt && alt.alternateId) {
-              const altUpdRes = await fetch(
-                `${API_BASE}/airdistribution/alternates/${encodeURIComponent(alt.alternateId)}`,
-                {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    Description: String(alt.description ?? ""),
-                    Supplier: String(alt.supplier ?? ""),
-                    Cost: String(alt.cost ?? ""),
-                    Notes: String(alt.notes ?? ""),
-                    IsUsed: alt.used ? 1 : 0,
-                  }),
-                }
-              );
-
-              const altUpdData = await altUpdRes.json().catch(() => ({}));
-              if (!altUpdRes.ok) {
-                throw new Error(`AlternateAirDistribution UPDATE failed: ${JSON.stringify(altUpdData)}`);
-              }
-              continue;
-            }
-
-            // New alternate -> POST
-            if (!alt.isExistingAlt) {
-              const altRes = await fetch(`${API_BASE}/airdistribution/alternates`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
+          // Existing alternate -> PUT
+          if (alt.isExistingAlt && alt.alternateId) {
+            const { res: altUpdRes, data: altUpdData } = await fetchJson(
+              withReport(
+                `${API_BASE}/airdistribution/alternates/${encodeURIComponent(alt.alternateId)}`
+              ),
+              {
+                method: "PUT",
                 body: JSON.stringify({
+                  reportId,
+                  Description: String(alt.description ?? ""),
+                  Supplier: String(alt.supplier ?? ""),
+                  Cost: String(alt.cost ?? ""),
+                  Notes: String(alt.notes ?? ""),
+                  IsUsed: alt.used ? 1 : 0,
+                }),
+              }
+            );
+
+            if (!altUpdRes.ok) {
+              throw new Error(
+                `AlternateAirDistribution UPDATE failed: ${JSON.stringify(altUpdData)}`
+              );
+            }
+            continue;
+          }
+
+          // New alternate -> POST
+          if (!alt.isExistingAlt) {
+            const { res: altRes, data: altData } = await fetchJson(
+              withReport(`${API_BASE}/airdistribution/alternates`),
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  reportId,
                   AirDistributionId: airDistributionId,
                   Description: String(alt.description ?? ""),
                   Supplier: String(alt.supplier ?? ""),
@@ -359,49 +472,57 @@ export default function BoxView4({ number, onBack }) {
                   Notes: String(alt.notes ?? ""),
                   IsUsed: alt.used ? 1 : 0,
                 }),
-              });
-
-              const altData = await altRes.json().catch(() => ({}));
-              if (!altRes.ok) {
-                throw new Error(`AlternateAirDistribution POST failed: ${JSON.stringify(altData)}`);
               }
+            );
+
+            if (!altRes.ok) {
+              throw new Error(
+                `AlternateAirDistribution POST failed: ${JSON.stringify(altData)}`
+              );
             }
           }
-
-          continue;
         }
 
-        // ============================
-        // CASE 2: New AirDistribution
-        // ============================
-        const createRes = await fetch(`${API_BASE}/airdistribution`, {
+        continue;
+      }
+
+      // ============================
+      // CASE 2: New AirDistribution
+      // ============================
+      const { res: createRes, data: createData } = await fetchJson(
+        withReport(`${API_BASE}/airdistribution`),
+        {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            reportId,
             Description: String(primary.description ?? ""),
             Supplier: String(primary.supplier ?? ""),
             Cost: String(primary.cost ?? ""),
             Notes: String(primary.notes ?? ""),
           }),
-        });
-
-        const createData = await createRes.json().catch(() => ({}));
-        if (!createRes.ok) throw new Error(`AirDistribution POST failed: ${JSON.stringify(createData)}`);
-
-        const airDistributionId =
-          createData.AirDistributionId || createData.airDistributionId || createData.id;
-
-        if (!airDistributionId) {
-          throw new Error("AirDistributionId missing from AirDistribution POST response");
         }
+      );
 
-        for (const alt of row.slice(1)) {
-          if (!alt || isEmpty(alt)) continue;
+      if (!createRes.ok) {
+        throw new Error(`AirDistribution POST failed: ${JSON.stringify(createData)}`);
+      }
 
-          const altRes = await fetch(`${API_BASE}/airdistribution/alternates`, {
+      const airDistributionId =
+        createData.AirDistributionId || createData.airDistributionId || createData.id;
+
+      if (!airDistributionId) {
+        throw new Error("AirDistributionId missing from AirDistribution POST response");
+      }
+
+      for (const alt of row.slice(1)) {
+        if (!alt || isEmpty(alt)) continue;
+
+        const { res: altRes, data: altData } = await fetchJson(
+          withReport(`${API_BASE}/airdistribution/alternates`),
+          {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              reportId,
               AirDistributionId: airDistributionId,
               Description: String(alt.description ?? ""),
               Supplier: String(alt.supplier ?? ""),
@@ -409,51 +530,92 @@ export default function BoxView4({ number, onBack }) {
               Notes: String(alt.notes ?? ""),
               IsUsed: alt.used ? 1 : 0,
             }),
-          });
-
-          const altData = await altRes.json().catch(() => ({}));
-          if (!altRes.ok) {
-            throw new Error(`AlternateAirDistribution POST failed: ${JSON.stringify(altData)}`);
           }
+        );
+
+        if (!altRes.ok) {
+          throw new Error(
+            `AlternateAirDistribution POST failed: ${JSON.stringify(altData)}`
+          );
         }
       }
-
-      alert("✅ Submitted changes to AirDistribution (updated existing + created new items)!");
-    } catch (err) {
-      console.error("❌ Submit error:", err);
-      alert("❌ Submit failed: " + (err.message || err));
     }
-  };
+  }, [fetchJson, isEmpty, reportId, sections, withReport]);
+
+  // ✅ Home button: submit, then refresh, then go back (no submit button anywhere)
+  const onHomeClick = useCallback(async () => {
+    if (saving) return;
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      await submitAll();
+
+      alert("✅ Saved!");
+      await load();
+      onBack?.();
+    } catch (e) {
+      console.error("❌ Save error:", e);
+      setError(e.message || String(e));
+      alert("❌ Save failed: " + (e.message || e));
+    } finally {
+      setSaving(false);
+    }
+  }, [load, onBack, saving, submitAll]);
+
+  if (loading) return <p className="p-3">Loading…</p>;
+  if (error) return <p className="p-3 text-danger">Error: {error}</p>;
 
   return (
     <div className="container py-4">
-      <h2>Code {number}</h2>
-      <p>AirDistribution</p>
+      {/* TOP BAR like the others: Home (save+back) + Add */}
+      <div className="d-flex align-items-center justify-content-between mb-3">
+        <button
+          type="button"
+          className="btn btn-dark"
+          onClick={onHomeClick}
+          disabled={saving || !reportId}
+          title={!reportId ? "Set reportId first" : "Save and go back"}
+        >
+          {saving ? "Saving..." : "Home"}
+        </button>
 
-      <form onSubmit={handleSubmit}>
-        {sections.map((opts, i) => (
-          <Section
-            key={i}
-            idx={i}
-            options={opts}
-            onChange={updateSection}
-            onRemoveSection={sections.length > 1 ? removeSection : undefined}
-          />
-        ))}
-
-        <div className="d-flex flex-wrap gap-2 mb-4">
-          <button type="button" className="btn btn-outline-primary" onClick={addSection}>
-            + Add Item (starts with 2 alts)
-          </button>
-          <button type="submit" className="btn btn-secondary">
-            Submit changes
-          </button>
+        <div className="text-center">
+          <div className="fw-semibold">AirDistribution Input</div>
+          <div className="text-muted small">Code {number}</div>
         </div>
-      </form>
 
-      <button className="btn btn-dark" onClick={onBack}>
-        Back to Home
-      </button>
+        <button
+          type="button"
+          className="btn btn-outline-primary"
+          onClick={addSection}
+          disabled={saving || !reportId}
+          title={!reportId ? "Set reportId first" : "Add item"}
+        >
+          +
+        </button>
+      </div>
+
+      {!reportId && (
+        <div className="alert alert-danger">
+          Missing <strong>reportId</strong>. Set it on Home first (this API is report-scoped).
+        </div>
+      )}
+
+      {sections.map((opts, i) => (
+        <Section
+          key={i}
+          idx={i}
+          options={opts}
+          onChange={updateSection}
+          onRemoveSection={sections.length > 1 ? removeSection : undefined}
+        />
+      ))}
+
+      <div className="text-muted mt-2 small">
+        Note: Home saves everything and returns to the previous screen.
+      </div>
     </div>
   );
 }

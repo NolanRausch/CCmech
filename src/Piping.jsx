@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
-import BoxView3 from "./BoxView3"; // ✅ editor for Piping
+import BoxView6 from "./BoxView6"; // ✅ editor for Piping
 
-export default function DbTestViewer({ onTotalsChange }) {
+export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp }) {
   const [rows, setRows] = useState([]); // each row gets .Alternates: []
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -13,6 +13,46 @@ export default function DbTestViewer({ onTotalsChange }) {
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
   const BLUE = "#0b2a4a";
+
+  // -------------------------
+  // reportId helpers (TEMPLATE)
+  // -------------------------
+  const isGuid = useCallback((v) => {
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
+      String(v || "").trim().replace(/[{}]/g, "")
+    );
+  }, []);
+
+  const normalizeGuid = useCallback(
+    (v) => {
+      const s = String(v || "").trim().replace(/[{}]/g, "");
+      return isGuid(s) ? s.toLowerCase() : "";
+    },
+    [isGuid]
+  );
+
+  // ✅ reportId for endpoints ONLY (prop > global > localStorage)
+  const reportId = useMemo(() => {
+    const fromProp = normalizeGuid(reportIdProp);
+    if (fromProp) return fromProp;
+
+    const fromGlobal = normalizeGuid(window.__REPORT_ID__);
+    if (fromGlobal) return fromGlobal;
+
+    const fromLS = normalizeGuid(localStorage.getItem("ccms_report_id"));
+    if (fromLS) return fromLS;
+
+    return "";
+  }, [reportIdProp, normalizeGuid]);
+
+  const withReport = useCallback(
+    (url) => {
+      if (!reportId) return url;
+      const hasQ = url.includes("?");
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+    },
+    [reportId]
+  );
 
   const parseCost = useCallback((val) => {
     const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
@@ -30,7 +70,13 @@ export default function DbTestViewer({ onTotalsChange }) {
     async (pipingId) => {
       try {
         const res = await fetch(
-          `${API_BASE}/piping/alternates/${encodeURIComponent(pipingId)}`
+          withReport(
+            `${API_BASE}/piping/alternates/${encodeURIComponent(pipingId)}`
+          ),
+          {
+            method: "GET",
+            headers: reportId ? { "x-report-id": reportId } : undefined,
+          }
         );
         if (!res.ok) throw new Error(`Alt HTTP ${res.status}`);
 
@@ -47,7 +93,7 @@ export default function DbTestViewer({ onTotalsChange }) {
         return [];
       }
     },
-    [API_BASE]
+    [API_BASE, reportId, withReport]
   );
 
   const fetchRows = useCallback(async () => {
@@ -55,8 +101,11 @@ export default function DbTestViewer({ onTotalsChange }) {
       setLoading(true);
       setError(null);
 
-      // 1) Get Piping list
-      const res = await fetch(`${API_BASE}/piping`);
+      // ✅ list endpoint stays /piping, but becomes report-scoped via query+header
+      const res = await fetch(withReport(`${API_BASE}/piping`), {
+        method: "GET",
+        headers: reportId ? { "x-report-id": reportId } : undefined,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const json = await res.json();
@@ -66,7 +115,7 @@ export default function DbTestViewer({ onTotalsChange }) {
         ? json.sample
         : [];
 
-      // 2) For each Piping row, fetch alternates and attach as .Alternates
+      // Attach alternates
       const withAlternates = await Promise.all(
         list.map(async (r) => {
           const alts = await fetchAlternates(r.PipingId);
@@ -80,19 +129,24 @@ export default function DbTestViewer({ onTotalsChange }) {
     } finally {
       setLoading(false);
     }
-  }, [API_BASE, fetchAlternates]);
+  }, [API_BASE, fetchAlternates, reportId, withReport]);
 
   useEffect(() => {
     fetchRows();
   }, [fetchRows]);
 
-  // DELETE one row by PipingId (backend: DELETE /api/piping/{id})
+  // ✅ delete keeps /piping/{id}, but adds report scope via query+header
   const handleDelete = async (pipingId) => {
     try {
       setDeletingId(pipingId);
 
-      const url = `${API_BASE}/piping/${encodeURIComponent(pipingId)}`;
-      const res = await fetch(url, { method: "DELETE" });
+      const url = withReport(
+        `${API_BASE}/piping/${encodeURIComponent(pipingId)}`
+      );
+      const res = await fetch(url, {
+        method: "DELETE",
+        headers: reportId ? { "x-report-id": reportId } : undefined,
+      });
 
       const text = await res.text();
       let data;
@@ -119,11 +173,13 @@ export default function DbTestViewer({ onTotalsChange }) {
 
   const toggleExpand = useCallback((id) => {
     setRows((prev) =>
-      prev.map((r) => (r.PipingId === id ? { ...r, _expand: !r._expand } : r))
+      prev.map((r) =>
+        r.PipingId === id ? { ...r, _expand: !r._expand } : r
+      )
     );
   }, []);
 
-  // ✅ Total Cost (alt-adjusted) - uses chosen row and memoizes
+  // ✅ Total Cost (alt-adjusted)
   const totalCost = useMemo(() => {
     return rows.reduce((sum, r) => {
       const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
@@ -131,7 +187,7 @@ export default function DbTestViewer({ onTotalsChange }) {
     }, 0);
   }, [rows, pickUsedOrPrimary, parseCost]);
 
-  // ✅ Report section total up to Home whenever total changes (deduped + object)
+  // ✅ Push totals up (dedupe + object)
   const lastSentRef = useRef(null);
   useEffect(() => {
     if (typeof onTotalsChange !== "function") return;
@@ -151,17 +207,17 @@ export default function DbTestViewer({ onTotalsChange }) {
   // Editor screen (BoxView3 should also use /piping endpoints)
   if (selected === 1000) {
     return (
-      <BoxView3
+      <BoxView6
         number={selected}
+        reportId={reportId}
         onBack={() => {
           setSelected(null);
-          fetchRows(); // ✅ refresh Piping (and alternates) after returning
+          fetchRows(); // refresh after returning
         }}
       />
     );
   }
 
-  // ✅ fixed widths so Notes gets remaining space
   const col = {
     idx: { width: "3.25rem", whiteSpace: "nowrap" },
     desc: { width: "16rem", maxWidth: "16rem" },
@@ -174,7 +230,6 @@ export default function DbTestViewer({ onTotalsChange }) {
 
   return (
     <div className="container py-4">
-      {/* ✅ Input LEFT + header ALL CAPS + BLUE (no size changes) */}
       <div className="d-flex align-items-center gap-3 mb-3">
         <button
           className="btn btn-outline-secondary btn-lg"
@@ -213,10 +268,7 @@ export default function DbTestViewer({ onTotalsChange }) {
               <th style={{ ...col.desc, backgroundColor: BLUE }}>Description</th>
               <th style={{ ...col.supplier, backgroundColor: BLUE }}>Supplier</th>
               <th style={{ ...col.cost, backgroundColor: BLUE }}>Cost</th>
-
-              {/* ✅ Notes flexible */}
               <th style={{ backgroundColor: BLUE }}>Notes</th>
-
               <th style={{ ...col.alternates, backgroundColor: BLUE }}>
                 Alternates
               </th>
@@ -224,7 +276,6 @@ export default function DbTestViewer({ onTotalsChange }) {
             </tr>
           </thead>
 
-          {/* ✅ No "No records found" row; table can be empty */}
           <tbody>
             {rows.map((r, i) => {
               const hasUsedAlt = r?.Alternates?.some(
@@ -356,4 +407,3 @@ export default function DbTestViewer({ onTotalsChange }) {
     </div>
   );
 }
-

@@ -1,5 +1,5 @@
 // Home.js
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState, useEffect } from "react";
 import "./Home.css";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap-icons/font/bootstrap-icons.css";
@@ -23,7 +23,19 @@ import Labor6 from "./Labor6";
 import Labor7 from "./Labor7";
 
 function Home() {
-  const TAX_RATE = 0.07;
+  // ✅ NEW: simple home screen toggle (smallest change)
+  const [showHomeScreen, setShowHomeScreen] = useState(true);
+
+  // ✅ Editable tax rate (default 7%)
+  const [taxRate, setTaxRate] = useState(0.07);
+
+  // ✅ DEFAULT GUID (put a real one here if you want a fixed default)
+  // Best practice: set this to a "Test Report" row you inserted in dbo.Reports.
+  const DEFAULT_REPORT_ID = "82e93dd1-7891-4f78-b06d-c5ba14c93c9d";
+
+  // ✅ Report Id (persisted)
+  const [reportId, setReportId] = useState("");
+  const [reportIdDraft, setReportIdDraft] = useState("");
 
   const [selected, setSelected] = useState(null);
 
@@ -56,16 +68,64 @@ function Home() {
     labor7: { cost: 0, hours: 0, byType: [] },
   });
 
+  // ✅ ReportId helpers (strict GUID v4-ish pattern not required; just standard GUID format)
+  const isGuid = useCallback((s) => {
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
+      String(s || "").trim().replace(/[{}]/g, "")
+    );
+  }, []);
+
+  const normalizeGuid = useCallback(
+    (s) => {
+      const t = String(s || "").trim().replace(/[{}]/g, "");
+      return isGuid(t) ? t.toLowerCase() : "";
+    },
+    [isGuid]
+  );
+
+  // ✅ load persisted reportId on first render (fallback to DEFAULT_REPORT_ID)
+  useEffect(() => {
+    const saved = localStorage.getItem("ccms_report_id") || "";
+    const normSaved = normalizeGuid(saved);
+
+    // Use saved if valid; else use default if valid; else blank
+    const normDefault = normalizeGuid(DEFAULT_REPORT_ID);
+    const initial = normSaved || normDefault || "";
+
+    setReportId(initial);
+    setReportIdDraft(initial);
+  }, [normalizeGuid]);
+
+  // ✅ expose globally so every component/fetch can read it easily
+  useEffect(() => {
+    if (reportId) localStorage.setItem("ccms_report_id", reportId);
+    else localStorage.removeItem("ccms_report_id");
+    window.__REPORT_ID__ = reportId || "";
+  }, [reportId]);
+
+  const applyReportId = useCallback(() => {
+    const norm = normalizeGuid(reportIdDraft);
+    if (!norm) {
+      alert("Report ID must be a valid GUID.");
+      return;
+    }
+    setReportId(norm);
+  }, [reportIdDraft, normalizeGuid]);
+
+  const clearReportId = useCallback(() => {
+    // Clear means go back to default (if valid), otherwise blank
+    const normDefault = normalizeGuid(DEFAULT_REPORT_ID);
+    setReportId(normDefault || "");
+    setReportIdDraft(normDefault || "");
+  }, [normalizeGuid]);
+
   // ✅ FIX #1: make section setter idempotent (prevents render loops)
   const setSectionCost = useCallback((key, cost) => {
     const next = Number(cost) || 0;
 
     setTotalsBySection((prev) => {
       if ((prev[key] ?? 0) === next) return prev; // ✅ no-op if unchanged
-      return {
-        ...prev,
-        [key]: next,
-      };
+      return { ...prev, [key]: next };
     });
   }, []);
 
@@ -81,7 +141,6 @@ function Home() {
 
   // ✅ read labor payload coming from LaborViewer
   const readLaborPayload = useCallback((t) => {
-    // allow old style where someone passes just a number
     if (typeof t === "number" || typeof t === "string") {
       const cost = Number(t) || 0;
       return { cost, hours: 0, byType: [] };
@@ -114,10 +173,7 @@ function Home() {
 
         if (same) return prev; // ✅ no-op if unchanged
 
-        return {
-          ...prev,
-          [key]: parsed,
-        };
+        return { ...prev, [key]: parsed };
       });
     },
     [readLaborPayload]
@@ -135,11 +191,18 @@ function Home() {
     });
   }, []);
 
-  // helper: convert pre-tax -> with-tax
+  // ✅ helper: convert pre-tax -> with-tax using editable taxRate
   const withTax = useCallback(
-    (n) => Number(n || 0) * (1 + TAX_RATE),
-    [TAX_RATE]
+    (n) => Number(n || 0) * (1 + (Number(taxRate) || 0)),
+    [taxRate]
   );
+
+  const labelForSection = useCallback((k) => {
+    if (k === "air") return "Air Distribution";
+    return k.charAt(0).toUpperCase() + k.slice(1);
+  }, []);
+
+  const pct = useCallback((n) => `${(Number(n || 0) * 100).toFixed(2)}%`, []);
 
   // ✅ Pre-tax subtotal across non-labor sections
   const subTotal = useMemo(() => {
@@ -149,13 +212,9 @@ function Home() {
     );
   }, [totalsBySection]);
 
-  // ✅ Non-labor tax + grand total (with tax)
-  const taxAmount = useMemo(() => subTotal * TAX_RATE, [subTotal, TAX_RATE]);
-  const grandTotalWithTax = useMemo(
-    () => subTotal + taxAmount,
-    [subTotal, taxAmount]
-  );
+  // ✅ Non-labor totals (with tax)
   const subTotalWithTax = useMemo(() => withTax(subTotal), [subTotal, withTax]);
+  const grandTotalWithTax = subTotalWithTax;
 
   // ✅ Labor subtotal across all labor sections
   const laborSubTotal = useMemo(() => {
@@ -190,53 +249,42 @@ function Home() {
       }
     }
 
-    // sort by cost desc
     return Array.from(map.values()).sort((a, b) => b.cost - a.cost);
   }, [laborSections]);
 
-  // ✅ Labor tax + grand total (with tax)
-  const laborTaxAmount = useMemo(
-    () => laborSubTotal * TAX_RATE,
-    [laborSubTotal, TAX_RATE]
-  );
+  // ✅ Labor totals (with tax)
   const laborSubTotalWithTax = useMemo(
     () => withTax(laborSubTotal),
     [laborSubTotal, withTax]
   );
-  const laborGrandTotalWithTax = useMemo(
-    () => laborSubTotal + laborTaxAmount,
-    [laborSubTotal, laborTaxAmount]
-  );
+  const laborGrandTotalWithTax = laborSubTotalWithTax;
 
-  // ✅ Combined totals
-  const combinedSubTotal = useMemo(
-    () => subTotal + laborSubTotal,
-    [subTotal, laborSubTotal]
-  );
-  const combinedTax = useMemo(
-    () => taxAmount + laborTaxAmount,
-    [taxAmount, laborTaxAmount]
-  );
+  // ✅ Combined totals (used for combinedWithAdders only)
   const combinedGrandTotalWithTax = useMemo(
-    () => combinedSubTotal + combinedTax,
-    [combinedSubTotal, combinedTax]
+    () => grandTotalWithTax + laborGrandTotalWithTax,
+    [grandTotalWithTax, laborGrandTotalWithTax]
   );
 
   // ===== Adders / Allowances =====
-  // Contingency = 2% of total NON-labor with tax
+  const contingencyRate = 0.02;
+  const warrantyRate = 0.03;
+  const consumablesRate = 0.025;
+  const perDiemDaily = 25;
+  const perDiemMult = 1.1;
+
   const contingency = useMemo(
-    () => grandTotalWithTax * 0.02,
+    () => grandTotalWithTax * contingencyRate,
     [grandTotalWithTax]
   );
 
-  // Per Diem = 25 * (total labor hours) * 1.1
-  const perDiem = useMemo(() => 25 * laborHoursTotal * 1.1, [laborHoursTotal]);
+  const perDiem = useMemo(
+    () => perDiemDaily * laborHoursTotal * perDiemMult,
+    [laborHoursTotal]
+  );
 
-  // Warranty = 3% of grand total NON-labor with tax
-  const warranty = useMemo(() => grandTotalWithTax * 0.03, [grandTotalWithTax]);
+  const warranty = useMemo(() => grandTotalWithTax * warrantyRate, [grandTotalWithTax]);
 
-  // Consumables = 2.5% of grand total NON-labor (pre-tax)
-  const consumables = useMemo(() => subTotal * 0.025, [subTotal]);
+  const consumables = useMemo(() => subTotal * consumablesRate, [subTotal]);
 
   const addersTotal = useMemo(
     () => contingency + perDiem + warranty + consumables,
@@ -257,46 +305,104 @@ function Home() {
     () => nonLaborWithAdders * (1 / (1 - 0.25)),
     [nonLaborWithAdders]
   );
-
   const margin30 = useMemo(
-    () => nonLaborWithAdders * (1 / (1 - 0.30)),
+    () => nonLaborWithAdders * (1 / (1 - 0.3)),
     [nonLaborWithAdders]
   );
-
   const margin35 = useMemo(
     () => nonLaborWithAdders * (1 / (1 - 0.35)),
     [nonLaborWithAdders]
   );
 
-  // If you still use this screen, keep it
   if (selected === 1000) {
-    return <BoxView1 number={selected} onBack={() => setSelected(null)} />;
+    return (
+      <BoxView1
+        number={selected}
+        reportId={reportId}
+        onBack={() => setSelected(null)}
+      />
+    );
   }
 
+  // ✅ UPDATED: clear endpoint should use your deployed API + reportId
   const handleClearAll = async () => {
-    if (!window.confirm("Are you sure you want to delete ALL equipment?"))
+    if (!reportId) {
+      alert("Set a Report ID first.");
+      return;
+    }
+    if (!window.confirm("Are you sure you want to delete ALL equipment for this report?"))
       return;
 
     try {
-      const res = await fetch("http://localhost:7071/api/equipment/clear", {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/equipment/clear?reportId=${encodeURIComponent(
+          reportId
+        )}`,
+        { method: "DELETE", headers: { "x-report-id": reportId } }
+      );
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to clear table");
+      if (!res.ok) throw new Error(data.error || `Failed to clear table (HTTP ${res.status})`);
 
       console.log("✅ Cleared:", data);
-      alert("✅ All equipment deleted");
+      alert("✅ All equipment deleted for this report");
     } catch (err) {
       console.error("❌ Clear failed:", err);
       alert("❌ Error clearing table: " + (err.message || err));
     }
   };
 
-  // ✅ Uniform font + left aligned totals panel
-  const TotalsOnly = () => (
-    <div className="card mb-3">
-      <div className="card-body">
+  // ✅ Totals page: LEFT aligned + evenly spaced 3 columns (Label | Hours/% | Total-with-tax)
+  const TotalsOnly = () => {
+    const COLS = "360px 120px 180px"; // label | hours | total (consistent widths)
+
+    const Row = ({ label, hours = "", total = "", strong = false, muted = false }) => (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: COLS,
+          columnGap: 14,
+          alignItems: "baseline",
+          padding: "3px 0",
+          fontSize: 12,
+          lineHeight: 1.35,
+          opacity: muted ? 0.75 : 1,
+        }}
+      >
+        <div style={{ fontWeight: strong ? 700 : 400 }}>{label}</div>
+
+        <div
+          style={{
+            textAlign: "right",
+            fontVariantNumeric: "tabular-nums",
+            whiteSpace: "nowrap",
+            opacity: hours ? 0.9 : 0.4,
+          }}
+        >
+          {hours}
+        </div>
+
+        <div
+          style={{
+            textAlign: "right",
+            fontWeight: strong ? 800 : 600,
+            fontVariantNumeric: "tabular-nums",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {total}
+        </div>
+      </div>
+    );
+
+    const SectionTitle = ({ children }) => (
+      <div style={{ marginTop: 12, marginBottom: 6, fontSize: 12, fontWeight: 800 }}>
+        {children}
+      </div>
+    );
+
+    return (
+      <div style={{ width: "100%", display: "block", textAlign: "left" }}>
         <div className="d-flex justify-content-between align-items-center">
           <h5 className="mb-0">Totals</h5>
 
@@ -312,230 +418,218 @@ function Home() {
             <button
               className="btn btn-sm btn-outline-danger"
               onClick={handleClearAll}
-              title="Local only"
+              title="Deletes equipment for this report"
+              disabled={!reportId}
             >
-              Clear ALL Equipment (local)
+              Clear ALL Equipment (report)
             </button>
           </div>
         </div>
 
-        <hr className="my-3" />
+        {/* ✅ tax rate control */}
+        <div
+          style={{
+            marginTop: 10,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            fontSize: 12,
+          }}
+        >
+          <span style={{ fontWeight: 700 }}>Tax %:</span>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            max="100"
+            value={Number((taxRate * 100).toFixed(2))}
+            onChange={(e) => {
+              const pctNum = Number(e.target.value);
+              const next = Number.isFinite(pctNum) ? Math.max(0, pctNum) / 100 : 0;
+              setTaxRate(next);
+            }}
+            style={{ width: 90 }}
+          />
+          <span className="text-muted">(currently {pct(taxRate)})</span>
+        </div>
 
-        <div style={{ textAlign: "left", fontSize: "1rem", lineHeight: 1.35 }}>
+        {/* ✅ Left-aligned “table” block with fixed width */}
+        <div style={{ marginTop: 12, width: "fit-content" }}>
+          {/* column headers */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: COLS,
+              columnGap: 14,
+              fontSize: 12,
+              fontWeight: 700,
+              opacity: 0.75,
+              paddingBottom: 6,
+            }}
+          >
+            <div>Label</div>
+            <div style={{ textAlign: "right" }}>Hours / %</div>
+            <div style={{ textAlign: "right" }}>Total (w/ tax)</div>
+          </div>
+
           {/* ===== Non-Labor ===== */}
-          <div className="fw-semibold mb-2">Non-Labor</div>
+          <SectionTitle>Non-Labor</SectionTitle>
 
-          <div className="d-flex flex-column gap-1">
-            {Object.entries(totalsBySection).map(([k, v]) => (
-              <div key={k}>
-                <span className="fw-semibold">
-                  {k === "air"
-                    ? "Air Distribution"
-                    : k.charAt(0).toUpperCase() + k.slice(1)}
-                  :
-                </span>{" "}
-                <strong>{money(v)}</strong>{" "}
-                <span className="text-muted">(w/ tax {money(withTax(v))})</span>
-              </div>
-            ))}
-          </div>
+          {Object.entries(totalsBySection).map(([k, v]) => (
+            <Row key={k} label={labelForSection(k)} hours={pct(taxRate)} total={money(withTax(v))} />
+          ))}
 
-          <hr className="my-3" />
-
-          <div className="d-flex flex-column gap-1">
-            <div>
-              <span className="fw-semibold">Subtotal (Non-Labor):</span>{" "}
-              <strong>{money(subTotal)}</strong>
-            </div>
-            <div>
-              <span className="fw-semibold">
-                Subtotal (Non-Labor, w/ Tax):
-              </span>{" "}
-              <strong>{money(subTotalWithTax)}</strong>
-            </div>
-            <div>
-              <span className="fw-semibold">Tax (Non-Labor, 7%):</span>{" "}
-              <strong>{money(taxAmount)}</strong>
-            </div>
-            <div>
-              <span className="fw-semibold">
-                Grand Total (Non-Labor, w/ Tax):
-              </span>{" "}
-              <strong>{money(grandTotalWithTax)}</strong>
-            </div>
-          </div>
+          <Row
+            label="Non-Labor Subtotal"
+            hours={pct(taxRate)}
+            total={money(subTotalWithTax)}
+            strong
+          />
 
           {/* ===== Labor ===== */}
-          <hr className="my-3" />
-
-          <div className="fw-semibold mb-2">Labor (Grouped by Type)</div>
+          <SectionTitle>Labor (Grouped by Type)</SectionTitle>
 
           {laborByType.length === 0 ? (
-            <div className="text-muted">No labor totals yet.</div>
+            <Row label="No labor totals yet." hours="" total="" muted />
           ) : (
-            <div className="d-flex flex-column gap-1">
-              {laborByType.map((t) => (
-                <div key={t.type}>
-                  <span className="fw-semibold">{t.type}:</span>{" "}
-                  <span className="text-muted">
-                    {Number(t.hours || 0).toFixed(2)} hrs
-                  </span>{" "}
-                  <strong>{money(t.cost)}</strong>{" "}
-                  <span className="text-muted">
-                    (w/ tax {money(withTax(t.cost))})
-                  </span>
-                </div>
-              ))}
-            </div>
+            laborByType.map((t) => (
+              <Row
+                key={t.type}
+                label={t.type}
+                hours={`${Number(t.hours || 0).toFixed(2)} hrs`}
+                total={money(withTax(t.cost))}
+              />
+            ))
           )}
 
-          <div className="d-flex flex-column gap-1 mt-2">
-            <div>
-              <span className="fw-semibold">Labor Subtotal:</span>{" "}
-              <strong>{money(laborSubTotal)}</strong>{" "}
-              <span className="text-muted">
-                ({laborHoursTotal.toFixed(2)} hrs)
-              </span>
-            </div>
-            <div>
-              <span className="fw-semibold">Labor Subtotal (w/ Tax):</span>{" "}
-              <strong>{money(laborSubTotalWithTax)}</strong>
-            </div>
-            <div>
-              <span className="fw-semibold">Tax (Labor, 7%):</span>{" "}
-              <strong>{money(laborTaxAmount)}</strong>
-            </div>
-            <div>
-              <span className="fw-semibold">Grand Total (Labor, w/ Tax):</span>{" "}
-              <strong>{money(laborGrandTotalWithTax)}</strong>
-            </div>
-          </div>
-
-          {/* ===== Combined ===== */}
-          <hr className="my-3" />
-
-          <div className="fw-semibold mb-2">Combined</div>
-
-          <div className="d-flex flex-column gap-1">
-            <div>
-              <span className="fw-semibold">Combined Subtotal (Pre-Tax):</span>{" "}
-              <strong>{money(combinedSubTotal)}</strong>
-            </div>
-            <div>
-              <span className="fw-semibold">Combined Tax (7%):</span>{" "}
-              <strong>{money(combinedTax)}</strong>
-            </div>
-            <div>
-              <span className="fw-semibold">
-                Combined Grand Total (w/ Tax):
-              </span>{" "}
-              <strong>{money(combinedGrandTotalWithTax)}</strong>
-            </div>
-          </div>
+          <Row
+            label="Labor Subtotal"
+            hours={`${laborHoursTotal.toFixed(2)} hrs`}
+            total={money(laborSubTotalWithTax)}
+            strong
+          />
 
           {/* ===== Adders ===== */}
-          <hr className="my-3" />
+          <SectionTitle>Adders</SectionTitle>
 
-          <div className="fw-semibold mb-2">Adders</div>
+          <Row label="Contingency" hours={pct(contingencyRate)} total={money(contingency)} />
+          <Row label="Per Diem" hours={`${laborHoursTotal.toFixed(2)} hrs`} total={money(perDiem)} />
+          <Row label="Warranty" hours={pct(warrantyRate)} total={money(warranty)} />
+          <Row label="Consumables" hours={pct(consumablesRate)} total={money(consumables)} />
 
-          <div className="d-flex flex-column gap-1">
-            <div>
-              <span className="fw-semibold">
-                Contingency (2% of Non-Labor w/ Tax):
-              </span>{" "}
-              <strong>{money(contingency)}</strong>
-            </div>
-            <div>
-              <span className="fw-semibold">Per Diem (25 × labor hrs × 1.1):</span>{" "}
-              <strong>{money(perDiem)}</strong>
-            </div>
-            <div>
-              <span className="fw-semibold">
-                Warranty (3% of Non-Labor w/ Tax):
-              </span>{" "}
-              <strong>{money(warranty)}</strong>
-            </div>
-            <div>
-              <span className="fw-semibold">
-                Consumables (2.5% of Non-Labor pre-tax):
-              </span>{" "}
-              <strong>{money(consumables)}</strong>
-            </div>
-
-            <div className="mt-2">
-              <span className="fw-semibold">Adders Total:</span>{" "}
-              <strong>{money(addersTotal)}</strong>
-            </div>
-
-            <div className="mt-2">
-              <span className="fw-semibold">
-                Non-Labor Grand Total + Adders:
-              </span>{" "}
-              <strong>{money(nonLaborWithAdders)}</strong>
-            </div>
-          </div>
+          <Row label="Adders Total" hours="" total={money(addersTotal)} strong />
+          <Row
+            label="Non-Labor Grand Total + Adders"
+            hours=""
+            total={money(nonLaborWithAdders)}
+            strong
+          />
 
           {/* ===== Sell Price Targets ===== */}
-          <hr className="my-3" />
+          <SectionTitle>Sell Price Targets</SectionTitle>
 
-          <div className="fw-semibold mb-2">
-            Sell Price Targets (based on Non-Labor + Adders)
-          </div>
+          <Row label="25% Margin" hours={pct(0.25)} total={money(margin25)} />
+          <Row label="30% Margin" hours={pct(0.3)} total={money(margin30)} />
+          <Row label="35% Margin" hours={pct(0.35)} total={money(margin35)} />
 
-          <div className="d-flex flex-column gap-1">
-            <div>
-              <span className="fw-semibold">25% Margin:</span>{" "}
-              <strong>{money(margin25)}</strong>{" "}
-              <span className="text-muted">
-                (× {(1 / (1 - 0.25)).toFixed(4)})
-              </span>
-            </div>
-
-            <div>
-              <span className="fw-semibold">30% Margin:</span>{" "}
-              <strong>{money(margin30)}</strong>{" "}
-              <span className="text-muted">
-                (× {(1 / (1 - 0.30)).toFixed(4)})
-              </span>
-            </div>
-
-            <div>
-              <span className="fw-semibold">35% Margin:</span>{" "}
-              <strong>{money(margin35)}</strong>{" "}
-              <span className="text-muted">
-                (× {(1 / (1 - 0.35)).toFixed(4)})
-              </span>
-            </div>
-          </div>
-
-          <hr className="my-3" />
-
-          <div>
-            <span className="fw-semibold">Combined Grand Total + Adders:</span>{" "}
-            <strong>{money(combinedWithAdders)}</strong>
-          </div>
+          {/* ===== Final ===== */}
+          <SectionTitle>Final</SectionTitle>
+          <Row
+            label="Combined Grand Total + Adders"
+            hours=""
+            total={money(combinedWithAdders)}
+            strong
+          />
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const InputsOnly = () => (
     <div className="card mb-3">
       <div className="card-body d-flex justify-content-between align-items-center">
-        <h5 className="mb-0">Inputs</h5>
+        <div>
+          
+          <div style={{ fontSize: 12, opacity: 0.75 }}>
+            Report ID:{" "}
+            <span style={{ fontFamily: "monospace" }}>
+              {reportId ? reportId : "Not set"}
+            </span>
+          </div>
+        </div>
+
         <button
           className="btn btn-sm btn-primary"
           onClick={() => setViewMode("totals")}
+          disabled={!reportId}
+          title={!reportId ? "Set Report ID first" : ""}
         >
           View Totals
         </button>
       </div>
+
+      {/* ✅ Report ID control */}
+   
     </div>
   );
+
+  // ✅ NEW: Home screen (ONLY CHANGE: replace Open Report with 6 buttons)
+  if (showHomeScreen) {
+    // 🔧 Put your real 6 ReportIds here
+    const REPORT_BUTTONS = [
+      { label: "Report 1", reportId: DEFAULT_REPORT_ID },
+      { label: "Report 2", reportId: "" },
+      { label: "Report 3", reportId: "" },
+      { label: "Report 4", reportId: "" },
+      { label: "Report 5", reportId: "" },
+      { label: "Report 6", reportId: "" },
+    ];
+
+    const openReport = (rid) => {
+      const norm = normalizeGuid(rid);
+      if (!norm) {
+        alert("This button is missing a valid Report ID.");
+        return;
+      }
+
+      // ✅ same behavior as Save button, but automatic
+      setReportId(norm);
+      setReportIdDraft(norm);
+
+      // ✅ then go to the next page
+      setShowHomeScreen(false);
+    };
+
+    return (
+      <div className="home-container">
+        <h1 className="text-center">Capital City</h1>
+
+        <div className="card mt-3">
+          <div className="card-body text-center">
+            <div className="d-grid gap-2" style={{ maxWidth: 420, margin: "0 auto" }}>
+              {REPORT_BUTTONS.map((b, i) => (
+                <button
+                  key={i}
+                  className="btn btn-primary btn-lg"
+                  onClick={() => openReport(b.reportId)}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="home-container">
       <h1>Capital City</h1>
+
+      <button className="btn btn-primary btn-lg" onClick={() => setShowHomeScreen(true)}>
+        HOME
+      </button>
 
       {/* ✅ Either totals OR inputs */}
       {viewMode === "totals" ? (
@@ -544,72 +638,65 @@ function Home() {
         <>
           <InputsOnly />
 
-          {/* ====== SECTIONS ====== */}
+          {/* ✅ pass reportId to children that support it */}
           <div>
             <DbTestViewer
+              reportId={reportId}
               onTotalsChange={(t) => setSectionCost("equipment", readCost(t))}
             />
           </div>
 
           {/* Labor sections */}
           <div>
-            <Labor onTotalsChange={(t) => setLaborSection("labor1", t)} />
+            <Labor reportId={reportId} onTotalsChange={(t) => setLaborSection("labor1", readCost(t))} />
           </div>
 
           <div>
-            <Demo onTotalsChange={(t) => setSectionCost("demo", readCost(t))} />
+            <Demo reportId={reportId} onTotalsChange={(t) => setSectionCost("demo", readCost(t))} />
           </div>
 
           <div>
-            <Labor2 onTotalsChange={(t) => setLaborSection("labor2", t)} />
+            <Labor2 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor2", readCost(t))} />
           </div>
 
           <div>
-            <Rough onTotalsChange={(t) => setSectionCost("rough", readCost(t))} />
+            <Rough reportId={reportId} onTotalsChange={(t) => setSectionCost("rough", readCost(t))} />
           </div>
 
           <div>
-            <Labor3 onTotalsChange={(t) => setLaborSection("labor3", t)} />
+            <Labor3 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor3", t)} />
           </div>
 
           <div>
-            <AirDistribution
-              onTotalsChange={(t) => setSectionCost("air", readCost(t))}
-            />
+            <AirDistribution reportId={reportId} onTotalsChange={(t) => setSectionCost("air", readCost(t))} />
           </div>
 
           <div>
-            <Labor4 onTotalsChange={(t) => setLaborSection("labor4", t)} />
+            <Labor4 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor4", readCost(t))} />
           </div>
 
           <div>
-            <Electrical
-              onTotalsChange={(t) => setSectionCost("electrical", readCost(t))}
-            />
+            <Electrical reportId={reportId} onTotalsChange={(t) => setSectionCost("electrical", readCost(t))} />
           </div>
 
           <div>
-            <Labor5 onTotalsChange={(t) => setLaborSection("labor5", t)} />
+            <Labor5 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor5", t)} />
           </div>
 
           <div>
-            <Piping
-              onTotalsChange={(t) => setSectionCost("piping", readCost(t))}
-            />
+            <Piping reportId={reportId} onTotalsChange={(t) => setSectionCost("piping", readCost(t))} />
           </div>
 
           <div>
-            <Labor6 onTotalsChange={(t) => setLaborSection("labor6", t)} />
+            <Labor6 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor6", t)} />
           </div>
 
           <div>
-            <Completion
-              onTotalsChange={(t) => setSectionCost("completion", readCost(t))}
-            />
+            <Completion reportId={reportId} onTotalsChange={(t) => setSectionCost("completion", readCost(t))} />
           </div>
 
           <div>
-            <Labor7 onTotalsChange={(t) => setLaborSection("labor7", t)} />
+            <Labor7 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor7", t)} />
           </div>
         </>
       )}
@@ -618,5 +705,3 @@ function Home() {
 }
 
 export default Home;
-
-

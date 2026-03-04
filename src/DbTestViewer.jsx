@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxView1 from "./BoxView1";
 
-export default function DbTestViewer({ onTotalsChange }) {
+export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp }) {
   // 🔧 All hooks at the top
   const [rows, setRows] = useState([]); // each row gets .Alternates: []
   const [error, setError] = useState(null);
@@ -14,6 +14,61 @@ export default function DbTestViewer({ onTotalsChange }) {
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
   const BLUE = "#0b2a4a"; // ✅ same blue as header bar
+
+  // -------------------------
+  // reportId helpers
+  // -------------------------
+  const isGuid = useCallback((v) => {
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
+      String(v || "").trim().replace(/[{}]/g, "")
+    );
+  }, []);
+
+  const normalizeGuid = useCallback(
+    (v) => {
+      const s = String(v || "").trim().replace(/[{}]/g, "");
+      return isGuid(s) ? s.toLowerCase() : "";
+    },
+    [isGuid]
+  );
+
+  // ✅ FIXED: prefer prop -> window.__REPORT_ID__ -> localStorage("ccms_report_id")
+  const reportId = useMemo(() => {
+    const fromProp = normalizeGuid(reportIdProp);
+    if (fromProp) return fromProp;
+
+    const fromGlobal = normalizeGuid(window.__REPORT_ID__);
+    if (fromGlobal) return fromGlobal;
+
+    const fromLS = normalizeGuid(localStorage.getItem("ccms_report_id"));
+    if (fromLS) return fromLS;
+
+    return "";
+  }, [reportIdProp, normalizeGuid]);
+
+  const withReport = useCallback(
+    (url) => {
+      if (!reportId) return url;
+      const hasQ = url.includes("?");
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+    },
+    [reportId]
+  );
+
+  const fetchJson = useCallback(
+    async (url, opts = {}) => {
+      const headers = {
+        ...(opts.headers || {}),
+        "Content-Type": "application/json",
+        ...(reportId ? { "x-report-id": reportId } : {}),
+      };
+
+      const res = await fetch(url, { ...opts, headers });
+      const data = await res.json().catch(() => ({}));
+      return { res, data };
+    },
+    [reportId]
+  );
 
   // Safe number parser for strings like "250.00", "$250", etc.
   const parseNum = useCallback((val) => {
@@ -36,44 +91,81 @@ export default function DbTestViewer({ onTotalsChange }) {
   );
 
   const pickUsedOrPrimary = useCallback((primary, alternates = []) => {
-    const usedAlt = alternates.find((a) => Number(a?.IsUsed) === 1);
+    const usedAlt = alternates.find(
+      (a) => Number(a?.IsUsed) === 1 || a?.IsUsed === true
+    );
     return usedAlt || primary;
   }, []);
 
-  const fetchAlternates = useCallback(
-    async (equipmentId) => {
-      try {
-        const res = await fetch(
-          `${API_BASE}/db-test-alternate/${encodeURIComponent(equipmentId)}`
-        );
-        if (!res.ok) throw new Error(`Alt HTTP ${res.status}`);
-        const json = await res.json();
-        const list = Array.isArray(json?.sample) ? json.sample : [];
-        return list;
-      } catch (e) {
-        console.warn("Alternates fetch failed for", equipmentId, e);
+  // ✅ IMPORTANT: normalize equipment id from any casing the API returns
+  const getEquipmentId = useCallback((r) => {
+    return (
+      r?.EquipmentId ??
+      r?.equipmentId ??
+      r?.EQUIPMENTID ??
+      r?.id ??
+      r?.Id ??
+      r?.ID ??
+      ""
+    );
+  }, []);
+
+const fetchAlternates = useCallback(
+  async (equipmentId) => {
+    console.log("🔥 fetchAlternates called", { equipmentId, reportId });
+
+    if (!reportId) return [];
+    if (!equipmentId) return [];
+
+    try {
+      const rawUrl = `${API_BASE}/equipment/alternates/${encodeURIComponent(equipmentId)}`;
+      const finalUrl = withReport(rawUrl);
+
+      // ✅ THESE ARE THE IMPORTANT LOGS
+      console.log("RAW URL:", rawUrl);
+      console.log("FINAL URL:", finalUrl);
+      console.log("REPORT ID:", reportId);
+
+      const { res, data } = await fetchJson(finalUrl, { method: "GET" });
+
+      if (!res.ok) {
+        console.warn("Alternates GET not ok:", res.status, data);
         return [];
       }
-    },
-    [API_BASE]
-  );
+
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      console.warn("Alternates fetch failed for", equipmentId, e);
+      return [];
+    }
+  },
+  [API_BASE, fetchJson, reportId, withReport]
+);
 
   const fetchRows = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // 1) Get equipment list
-      const res = await fetch(`${API_BASE}/db-test`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      const list = Array.isArray(json?.sample) ? json.sample : [];
+      if (!reportId) {
+        setRows([]);
+        setError("Missing reportId (required).");
+        return;
+      }
 
-      // 2) For each equipment, fetch alternates and attach as .Alternates
+      const { res, data } = await fetchJson(withReport(`${API_BASE}/equipment`), {
+        method: "GET",
+      });
+
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      const list = Array.isArray(data) ? data : [];
+
       const withAlternates = await Promise.all(
         list.map(async (r) => {
-          const alts = await fetchAlternates(r.EquipmentId);
-          return { ...r, Alternates: alts, _expand: false }; // _expand for UI toggle
+          const eid = getEquipmentId(r);
+          const alts = await fetchAlternates(eid);
+          return { ...r, _eid: eid, Alternates: alts, _expand: false };
         })
       );
 
@@ -83,33 +175,35 @@ export default function DbTestViewer({ onTotalsChange }) {
     } finally {
       setLoading(false);
     }
-  }, [API_BASE, fetchAlternates]);
+  }, [API_BASE, fetchAlternates, fetchJson, reportId, withReport, getEquipmentId]);
 
   useEffect(() => {
     fetchRows();
   }, [fetchRows]);
 
-  // Toggle expand
-  const toggleExpand = useCallback((id) => {
+  const toggleExpand = useCallback((eid) => {
     setRows((prev) =>
-      prev.map((r) => (r.EquipmentId === id ? { ...r, _expand: !r._expand } : r))
+      prev.map((r) => (r._eid === eid ? { ...r, _expand: !r._expand } : r))
     );
   }, []);
 
-  // DELETE one row by EquipmentId (backend: DELETE /api/equipment/{id})
   const handleDelete = async (equipmentId) => {
     try {
-      setDeletingId(equipmentId);
-      const url = `${API_BASE}/equipment/${encodeURIComponent(equipmentId)}`;
-      const res = await fetch(url, { method: "DELETE" });
-
-      const text = await res.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = text;
+      if (!reportId) {
+        alert("Delete failed: missing reportId");
+        return;
       }
+      if (!equipmentId) {
+        alert("Delete failed: missing equipmentId");
+        return;
+      }
+
+      setDeletingId(equipmentId);
+
+      const url = withReport(
+        `${API_BASE}/equipment/${encodeURIComponent(equipmentId)}`
+      );
+      const { res, data } = await fetchJson(url, { method: "DELETE" });
 
       if (!res.ok) {
         throw new Error(
@@ -117,8 +211,7 @@ export default function DbTestViewer({ onTotalsChange }) {
         );
       }
 
-      // Optimistically remove from UI
-      setRows((prev) => prev.filter((r) => r.EquipmentId !== equipmentId));
+      setRows((prev) => prev.filter((r) => r._eid !== equipmentId));
     } catch (e) {
       alert("Delete failed: " + (e.message || e));
       console.error(e);
@@ -127,7 +220,6 @@ export default function DbTestViewer({ onTotalsChange }) {
     }
   };
 
-  // Totals: material cost only (labor fields removed)
   const totals = useMemo(() => {
     return rows.reduce(
       (acc, r) => {
@@ -139,10 +231,8 @@ export default function DbTestViewer({ onTotalsChange }) {
     );
   }, [rows, pickUsedOrPrimary, parseNum]);
 
-  // ✅ Define totalCost (the thing your parent expects)
   const totalCost = totals.materialCost;
 
-  // ✅ Push totals up to Home (deduped to prevent render loops)
   const lastSentRef = useRef(null);
 
   useEffect(() => {
@@ -157,30 +247,27 @@ export default function DbTestViewer({ onTotalsChange }) {
     onTotalsChange(payload);
   }, [totalCost, onTotalsChange]);
 
-  // Early returns AFTER hooks
   if (loading) return <p className="p-3">Loading...</p>;
   if (error) return <p className="p-3 text-danger">Error: {error}</p>;
 
-  // Swap to BoxView1 and refresh on back
   if (selected === 1000) {
     return (
       <BoxView1
         number={selected}
+        reportId={reportId}
         onBack={() => {
           setSelected(null);
-          fetchRows(); // ✅ refresh equipment (and alternates) after returning
+          fetchRows();
         }}
       />
     );
   }
 
-  // ✅ fixed widths for small columns so Notes gets the remaining space
   const col = {
     idx: { width: "3.25rem", whiteSpace: "nowrap" },
     desc: { width: "16rem", maxWidth: "16rem" },
     supplier: { width: "12rem", maxWidth: "12rem" },
     cost: { width: "7.5rem", whiteSpace: "nowrap" },
-    // Notes gets the free space: no width set
     alternates: { width: "10rem", whiteSpace: "nowrap" },
     actions: { width: "7rem", whiteSpace: "nowrap" },
     clamp: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
@@ -188,7 +275,6 @@ export default function DbTestViewer({ onTotalsChange }) {
 
   return (
     <div className="container py-4">
-      {/* ✅ ONLY CHANGE: make header ALL CAPS + BLUE (keep same size/structure) */}
       <div className="d-flex align-items-center gap-3 mb-3">
         <button
           className="btn btn-outline-secondary btn-lg"
@@ -197,10 +283,12 @@ export default function DbTestViewer({ onTotalsChange }) {
           Input
         </button>
 
-        <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
-          Code 1000 - Equipment: RTU&apos;s, Chillers, Boilers, Pumps, Towers,
-          VRF, Splits
-        </h5>
+        <div>
+          <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
+            Code 1000 - Equipment: RTU&apos;s, Chillers, Boilers, Pumps, Towers,
+            VRF, Splits
+          </h5>
+        </div>
       </div>
 
       <div
@@ -219,7 +307,7 @@ export default function DbTestViewer({ onTotalsChange }) {
               position: "sticky",
               top: 0,
               zIndex: 2,
-              backgroundColor: BLUE, // ✅ dark blue bar
+              backgroundColor: BLUE,
             }}
           >
             <tr>
@@ -235,11 +323,14 @@ export default function DbTestViewer({ onTotalsChange }) {
 
           <tbody>
             {rows.map((r, i) => {
-              const hasUsedAlt = r?.Alternates?.some((a) => Number(a?.IsUsed) === 1);
+              const eid = r._eid || getEquipmentId(r);
+              const hasUsedAlt = r?.Alternates?.some(
+                (a) => Number(a?.IsUsed) === 1 || a?.IsUsed === true
+              );
               const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
 
               return (
-                <React.Fragment key={r.EquipmentId || `rowwrap-${i}`}>
+                <React.Fragment key={eid || `rowwrap-${i}`}>
                   <tr>
                     <td style={col.idx}>
                       {i + 1}
@@ -264,8 +355,9 @@ export default function DbTestViewer({ onTotalsChange }) {
                     <td style={col.alternates}>
                       <button
                         className="btn btn-sm btn-outline-primary"
-                        onClick={() => toggleExpand(r.EquipmentId)}
+                        onClick={() => toggleExpand(eid)}
                         title="Show/Hide alternates"
+                        disabled={!eid}
                       >
                         {r._expand
                           ? `Hide (${r.Alternates?.length || 0})`
@@ -276,11 +368,11 @@ export default function DbTestViewer({ onTotalsChange }) {
                     <td style={col.actions}>
                       <button
                         className="btn btn-sm btn-outline-danger"
-                        onClick={() => handleDelete(r.EquipmentId)}
-                        disabled={deletingId === r.EquipmentId}
+                        onClick={() => handleDelete(eid)}
+                        disabled={deletingId === eid || !eid}
                         title="Delete this equipment"
                       >
-                        {deletingId === r.EquipmentId ? "Deleting…" : "Clear"}
+                        {deletingId === eid ? "Deleting…" : "Clear"}
                       </button>
                     </td>
                   </tr>
@@ -289,7 +381,7 @@ export default function DbTestViewer({ onTotalsChange }) {
                     (r.Alternates?.length ? (
                       r.Alternates.map((a, ai) => (
                         <tr
-                          key={`${r.EquipmentId}-alt-${a?.AlternateId || ai}`}
+                          key={`${eid}-alt-${a?.AlternateId || a?.alternateId || ai}`}
                           className="table-light"
                         >
                           <td style={col.idx}></td>
@@ -297,7 +389,7 @@ export default function DbTestViewer({ onTotalsChange }) {
                           <td className="ps-4" style={{ ...col.desc }}>
                             <span className="badge text-bg-secondary me-2">ALT</span>
                             {a.Description}
-                            {Number(a?.IsUsed) === 1 && (
+                            {(Number(a?.IsUsed) === 1 || a?.IsUsed === true) && (
                               <span className="ms-2 badge text-bg-success">USED</span>
                             )}
                           </td>
@@ -341,7 +433,3 @@ export default function DbTestViewer({ onTotalsChange }) {
     </div>
   );
 }
-
-
-
-

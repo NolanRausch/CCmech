@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxView3 from "./BoxView3";
 
-export default function DbTestViewer({ onTotalsChange }) {
+export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp }) {
   const [rows, setRows] = useState([]); // each row gets .Alternates: []
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -13,6 +13,46 @@ export default function DbTestViewer({ onTotalsChange }) {
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
   const BLUE = "#0b2a4a";
+
+  // -------------------------
+  // reportId helpers (TEMPLATE)
+  // -------------------------
+  const isGuid = useCallback((v) => {
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
+      String(v || "").trim().replace(/[{}]/g, "")
+    );
+  }, []);
+
+  const normalizeGuid = useCallback(
+    (v) => {
+      const s = String(v || "").trim().replace(/[{}]/g, "");
+      return isGuid(s) ? s.toLowerCase() : "";
+    },
+    [isGuid]
+  );
+
+  // ✅ reportId for endpoints ONLY (prop > global > localStorage)
+  const reportId = useMemo(() => {
+    const fromProp = normalizeGuid(reportIdProp);
+    if (fromProp) return fromProp;
+
+    const fromGlobal = normalizeGuid(window.__REPORT_ID__);
+    if (fromGlobal) return fromGlobal;
+
+    const fromLS = normalizeGuid(localStorage.getItem("ccms_report_id"));
+    if (fromLS) return fromLS;
+
+    return "";
+  }, [reportIdProp, normalizeGuid]);
+
+  const withReport = useCallback(
+    (url) => {
+      if (!reportId) return url;
+      const hasQ = url.includes("?");
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+    },
+    [reportId]
+  );
 
   const parseCost = useCallback((val) => {
     const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
@@ -30,7 +70,11 @@ export default function DbTestViewer({ onTotalsChange }) {
     async (eRoughId) => {
       try {
         const res = await fetch(
-          `${API_BASE}/erough/alternates/${encodeURIComponent(eRoughId)}`
+          withReport(`${API_BASE}/erough/alternates/${encodeURIComponent(eRoughId)}`),
+          {
+            method: "GET",
+            headers: reportId ? { "x-report-id": reportId } : undefined,
+          }
         );
         if (!res.ok) throw new Error(`Alt HTTP ${res.status}`);
 
@@ -47,7 +91,7 @@ export default function DbTestViewer({ onTotalsChange }) {
         return [];
       }
     },
-    [API_BASE]
+    [API_BASE, reportId, withReport]
   );
 
   const fetchRows = useCallback(async () => {
@@ -55,8 +99,11 @@ export default function DbTestViewer({ onTotalsChange }) {
       setLoading(true);
       setError(null);
 
-      // 1) Get ERough list
-      const res = await fetch(`${API_BASE}/erough`);
+      // ✅ list endpoint stays /erough, but becomes report-scoped via query+header
+      const res = await fetch(withReport(`${API_BASE}/erough`), {
+        method: "GET",
+        headers: reportId ? { "x-report-id": reportId } : undefined,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const json = await res.json();
@@ -66,7 +113,6 @@ export default function DbTestViewer({ onTotalsChange }) {
         ? json.sample
         : [];
 
-      // 2) For each ERough, fetch alternates and attach as .Alternates
       const withAlternates = await Promise.all(
         list.map(async (r) => {
           const alts = await fetchAlternates(r.ERoughId);
@@ -80,19 +126,22 @@ export default function DbTestViewer({ onTotalsChange }) {
     } finally {
       setLoading(false);
     }
-  }, [API_BASE, fetchAlternates]);
+  }, [API_BASE, fetchAlternates, reportId, withReport]);
 
   useEffect(() => {
     fetchRows();
   }, [fetchRows]);
 
-  // DELETE one row by ERoughId (backend: DELETE /api/erough/{id})
+  // ✅ delete keeps /erough/{id}, but adds report scope via query+header
   const handleDelete = async (eRoughId) => {
     try {
       setDeletingId(eRoughId);
 
-      const url = `${API_BASE}/erough/${encodeURIComponent(eRoughId)}`;
-      const res = await fetch(url, { method: "DELETE" });
+      const url = withReport(`${API_BASE}/erough/${encodeURIComponent(eRoughId)}`);
+      const res = await fetch(url, {
+        method: "DELETE",
+        headers: reportId ? { "x-report-id": reportId } : undefined,
+      });
 
       const text = await res.text();
       let data;
@@ -123,7 +172,6 @@ export default function DbTestViewer({ onTotalsChange }) {
     );
   }, []);
 
-  // ✅ Total Cost (alt-adjusted) - memoized + consistent with chosen row
   const totalCost = useMemo(() => {
     return rows.reduce((sum, r) => {
       const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
@@ -131,7 +179,7 @@ export default function DbTestViewer({ onTotalsChange }) {
     }, 0);
   }, [rows, pickUsedOrPrimary, parseCost]);
 
-  // ✅ Report section total up to Home whenever total changes (deduped + object)
+  // ✅ Push totals up (dedupe + send object)
   const lastSentRef = useRef(null);
   useEffect(() => {
     if (typeof onTotalsChange !== "function") return;
@@ -153,9 +201,10 @@ export default function DbTestViewer({ onTotalsChange }) {
     return (
       <BoxView3
         number={selected}
+        reportId={reportId}
         onBack={() => {
           setSelected(null);
-          fetchRows(); // ✅ refresh ERough (and alternates) after returning
+          fetchRows();
         }}
       />
     );
@@ -213,23 +262,15 @@ export default function DbTestViewer({ onTotalsChange }) {
               <th style={{ ...col.desc, backgroundColor: BLUE }}>Description</th>
               <th style={{ ...col.supplier, backgroundColor: BLUE }}>Supplier</th>
               <th style={{ ...col.cost, backgroundColor: BLUE }}>Cost</th>
-
-              {/* ✅ Notes flexible */}
               <th style={{ backgroundColor: BLUE }}>Notes</th>
-
-              <th style={{ ...col.alternates, backgroundColor: BLUE }}>
-                Alternates
-              </th>
+              <th style={{ ...col.alternates, backgroundColor: BLUE }}>Alternates</th>
               <th style={{ ...col.actions, backgroundColor: BLUE }}>Actions</th>
             </tr>
           </thead>
 
-          {/* ✅ No "No records found" row; table can be empty */}
           <tbody>
             {rows.map((r, i) => {
-              const hasUsedAlt = r?.Alternates?.some(
-                (a) => Number(a?.IsUsed) === 1
-              );
+              const hasUsedAlt = r?.Alternates?.some((a) => Number(a?.IsUsed) === 1);
               const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
 
               return (
@@ -247,14 +288,8 @@ export default function DbTestViewer({ onTotalsChange }) {
                       )}
                     </td>
 
-                    <td style={{ ...col.desc, ...col.clamp }}>
-                      {chosen?.Description}
-                    </td>
-
-                    <td style={{ ...col.supplier, ...col.clamp }}>
-                      {chosen?.Supplier}
-                    </td>
-
+                    <td style={{ ...col.desc, ...col.clamp }}>{chosen?.Description}</td>
+                    <td style={{ ...col.supplier, ...col.clamp }}>{chosen?.Supplier}</td>
                     <td style={col.cost}>{fmtMoney(chosen?.Cost)}</td>
 
                     <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
@@ -295,29 +330,17 @@ export default function DbTestViewer({ onTotalsChange }) {
                           <td style={col.idx}></td>
 
                           <td className="ps-4" style={{ ...col.desc }}>
-                            <span className="badge text-bg-secondary me-2">
-                              ALT
-                            </span>
+                            <span className="badge text-bg-secondary me-2">ALT</span>
                             {a.Description}
                             {Number(a?.IsUsed) === 1 && (
-                              <span className="ms-2 badge text-bg-success">
-                                USED
-                              </span>
+                              <span className="ms-2 badge text-bg-success">USED</span>
                             )}
                           </td>
 
-                          <td style={{ ...col.supplier, ...col.clamp }}>
-                            {a.Supplier}
-                          </td>
-
+                          <td style={{ ...col.supplier, ...col.clamp }}>{a.Supplier}</td>
                           <td style={col.cost}>{fmtMoney(a.Cost)}</td>
 
-                          <td
-                            style={{
-                              whiteSpace: "normal",
-                              wordBreak: "break-word",
-                            }}
-                          >
+                          <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
                             {a.Notes}
                           </td>
 
@@ -337,10 +360,7 @@ export default function DbTestViewer({ onTotalsChange }) {
             })}
           </tbody>
 
-          <tfoot
-            className="table-secondary"
-            style={{ position: "sticky", bottom: 0 }}
-          >
+          <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
             <tr>
               <th colSpan={3}>Total Cost (alt-adjusted)</th>
               <th style={col.cost}>{fmtMoney(totalCost)}</th>
@@ -356,5 +376,3 @@ export default function DbTestViewer({ onTotalsChange }) {
     </div>
   );
 }
-
-

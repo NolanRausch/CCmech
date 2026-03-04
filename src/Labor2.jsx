@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
-import BoxViewLabor from "./BoxViewLabor"; // editor uses /labor endpoints
+import BoxViewLabor from "./BoxViewLabor";
 
-export default function LaborViewer({ onTotalsChange }) {
+export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -12,19 +12,53 @@ export default function LaborViewer({ onTotalsChange }) {
   const API_BASE =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
-  // 🔒 This file is locked to a single labor code
   const CODE_NUMBER = "2000";
   const BLUE = "#0b2a4a";
+  // -------------------------
+  // reportId helpers
+  // -------------------------
+  const isGuid = useCallback((v) => {
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
+      String(v || "").trim().replace(/[{}]/g, "")
+    );
+  }, []);
+
+  const normalizeGuid = useCallback(
+    (v) => {
+      const s = String(v || "").trim().replace(/[{}]/g, "");
+      return isGuid(s) ? s.toLowerCase() : "";
+    },
+    [isGuid]
+  );
+  const reportId = useMemo(() => {
+    const fromProp = normalizeGuid(reportIdProp);
+    if (fromProp) return fromProp;
+
+    const fromGlobal = normalizeGuid(window.__REPORT_ID__);
+    if (fromGlobal) return fromGlobal;
+
+    const fromLS = normalizeGuid(localStorage.getItem("ccms_report_id"));
+    if (fromLS) return fromLS;
+
+    return "";
+  }, [reportIdProp, normalizeGuid]);
+
+  const withReport = useCallback(
+    (url) => {
+      if (!reportId) return url;
+      const hasQ = url.includes("?");
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+    },
+    [reportId]
+  );
 
   const isSub = (t) => String(t || "").trim().toLowerCase() === "subcontractor";
 
-  // Safe number parser for strings like "250.00", "$250", etc.
   const parseNum = useCallback((val) => {
     const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
     return isNaN(n) ? 0 : n;
   }, []);
 
-  // ✅ Correct money formatting: 30000 -> $30,000.00
   const fmtMoney = useCallback(
     (val) => {
       const n = parseNum(val);
@@ -40,17 +74,15 @@ export default function LaborViewer({ onTotalsChange }) {
 
   const fmtHours = useCallback((val) => parseNum(val).toFixed(2), [parseNum]);
 
-  // ======================
-  // Fetch labor rows
-  // ======================
   const fetchRows = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const res = await fetch(
-        `${API_BASE}/labor/code/${encodeURIComponent(CODE_NUMBER)}`
-      );
+      const res = await fetch(withReport(`${API_BASE}/labor/code/2000`), {
+        method: "GET",
+        headers: reportId ? { "x-report-id": reportId } : undefined,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const json = await res.json();
@@ -66,22 +98,22 @@ export default function LaborViewer({ onTotalsChange }) {
     } finally {
       setLoading(false);
     }
-  }, [API_BASE, CODE_NUMBER]);
+  }, [API_BASE, reportId, withReport]);
 
   useEffect(() => {
     fetchRows();
   }, [fetchRows]);
 
-  // ======================
-  // Delete labor row
-  // ======================
   const handleDelete = async (laborId) => {
     try {
       setDeletingId(laborId);
 
       const res = await fetch(
-        `${API_BASE}/labor/${encodeURIComponent(laborId)}`,
-        { method: "DELETE" }
+        withReport(`${API_BASE}/labor/${encodeURIComponent(laborId)}`),
+        {
+          method: "DELETE",
+          headers: reportId ? { "x-report-id": reportId } : undefined,
+        }
       );
 
       const text = await res.text();
@@ -107,9 +139,6 @@ export default function LaborViewer({ onTotalsChange }) {
     }
   };
 
-  // ======================
-  // Totals
-  // ======================
   const totals = useMemo(() => {
     return rows.reduce(
       (acc, r) => {
@@ -121,9 +150,6 @@ export default function LaborViewer({ onTotalsChange }) {
     );
   }, [rows, parseNum]);
 
-  // ======================
-  // Report totals to Home (deduped)
-  // ======================
   const lastSentRef = useRef(null);
 
   useEffect(() => {
@@ -145,9 +171,6 @@ export default function LaborViewer({ onTotalsChange }) {
     onTotalsChange(payload);
   }, [totals.laborCost, totals.laborHours, onTotalsChange]);
 
-  // ======================
-  // Early returns (SAFE)
-  // ======================
   if (loading) return <p className="p-3">Loading...</p>;
   if (error) return <p className="p-3 text-danger">Error: {error}</p>;
 
@@ -163,12 +186,8 @@ export default function LaborViewer({ onTotalsChange }) {
     );
   }
 
-  // ======================
-  // Render
-  // ======================
   return (
     <div className="container py-4">
-      {/* ✅ Input LEFT + LABOR all caps blue */}
       <div className="d-flex align-items-center gap-3 mb-3">
         <button
           className="btn btn-outline-secondary btn-lg"
@@ -182,7 +201,6 @@ export default function LaborViewer({ onTotalsChange }) {
         </h5>
       </div>
 
-      {/* ===== Raw Labor Rows ===== */}
       <div
         className="table-responsive"
         style={{
@@ -204,18 +222,14 @@ export default function LaborViewer({ onTotalsChange }) {
           >
             <tr>
               <th style={{ width: "4rem", backgroundColor: BLUE }}>#</th>
-
               <th style={{ backgroundColor: BLUE }}>Labor Type</th>
-
               <th style={{ width: "14rem", backgroundColor: BLUE }}>
                 Subcontractor Name
               </th>
-
               <th style={{ width: "7rem", backgroundColor: BLUE }}>Hours</th>
               <th style={{ width: "9rem", backgroundColor: BLUE }}>
                 Labor Cost
               </th>
-
               <th style={{ backgroundColor: BLUE }}>Notes</th>
               <th style={{ width: "7rem", backgroundColor: BLUE }}>Actions</th>
             </tr>
@@ -232,8 +246,12 @@ export default function LaborViewer({ onTotalsChange }) {
                   {isSub(r.LaborType) ? (r.LaborName || "") : ""}
                 </td>
 
-                <td style={{ whiteSpace: "nowrap" }}>{fmtHours(r.LaborHours)}</td>
-                <td style={{ whiteSpace: "nowrap" }}>{fmtMoney(r.LaborCost)}</td>
+                <td style={{ whiteSpace: "nowrap" }}>
+                  {fmtHours(r.LaborHours)}
+                </td>
+                <td style={{ whiteSpace: "nowrap" }}>
+                  {fmtMoney(r.LaborCost)}
+                </td>
 
                 <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
                   {r.Notes}
@@ -267,7 +285,6 @@ export default function LaborViewer({ onTotalsChange }) {
         </table>
       </div>
 
-      {/* ensures table-fixed works everywhere */}
       <style>{`
         .table-fixed { table-layout: fixed; width: 100%; }
       `}</style>

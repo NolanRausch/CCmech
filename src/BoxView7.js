@@ -1,13 +1,26 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 
-const API_BASE = "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
+const API_BASE =
+  "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
 const blank = { description: "", supplier: "", cost: "", notes: "" };
-const blankAlt = { ...blank, used: false, isExistingAlt: false, alternateId: undefined };
+const blankAlt = {
+  ...blank,
+  used: false,
+  isExistingAlt: false,
+  alternateId: undefined,
+};
 
 // ---------- Reusable row ----------
-function GridRow({ label, value, onChange, showUsed = false, onRemove, removable = false }) {
+function GridRow({
+  label,
+  value,
+  onChange,
+  showUsed = false,
+  onRemove,
+  removable = false,
+}) {
   const handle = (field) => (e) => onChange({ ...value, [field]: e.target.value });
 
   return (
@@ -33,7 +46,11 @@ function GridRow({ label, value, onChange, showUsed = false, onRemove, removable
         </div>
 
         {removable && (
-          <button type="button" className="btn btn-sm btn-outline-danger" onClick={onRemove}>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-danger"
+            onClick={onRemove}
+          >
             Remove
           </button>
         )}
@@ -135,7 +152,8 @@ function Section({ idx, options, onChange, onRemoveSection }) {
           <h6 className="mb-0">Item {idx + 1}</h6>
 
           <span className="text-muted small">
-            {Math.max(0, options.length - 1)} alternate{options.length - 1 === 1 ? "" : "s"}
+            {Math.max(0, options.length - 1)} alternate
+            {options.length - 1 === 1 ? "" : "s"}
           </span>
         </div>
 
@@ -181,7 +199,11 @@ function Section({ idx, options, onChange, onRemoveSection }) {
             className="btn btn-primary btn-sm"
             onClick={addAlternate}
             disabled={options.length - 1 >= MAX_ALTS}
-            title={options.length - 1 >= MAX_ALTS ? "Reached max alternates" : "Add alternate"}
+            title={
+              options.length - 1 >= MAX_ALTS
+                ? "Reached max alternates"
+                : "Add alternate"
+            }
           >
             + Add Alternate
           </button>
@@ -193,32 +215,84 @@ function Section({ idx, options, onChange, onRemoveSection }) {
 
 // =====================================================
 // COMPLETION EDITOR (Primary + AlternateCompletion)
-// Endpoints assumed (match your generator pattern):
-//   GET/POST   /api/completion
-//   PUT        /api/completion/{CompletionId}
-//   GET        /api/completion/alternates/{CompletionId}   (returns alternates for parent)
-//   POST       /api/completion/alternates                  (body includes CompletionId)
-//   PUT        /api/completion/alternates/{AlternateId}
+// - NO SUBMIT BUTTON
+// - "Home" button saves, then immediately onBack()
+// - reportId-scoped via query + x-report-id header
 // =====================================================
-export default function BoxView4({ number, onBack }) {
+export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
   const starter = [
     { ...blank, isExisting: false, completionId: undefined },
     { ...blankAlt },
     { ...blankAlt },
   ];
 
-  const [sections, setSections] = React.useState([]);
+  const [sections, setSections] = useState([]);
+  const [saving, setSaving] = useState(false);
 
-  React.useEffect(() => {
+  // -------------------------
+  // reportId helpers (TEMPLATE)
+  // -------------------------
+  const isGuid = useCallback((v) => {
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
+      String(v || "").trim().replace(/[{}]/g, "")
+    );
+  }, []);
+
+  const normalizeGuid = useCallback(
+    (v) => {
+      const s = String(v || "").trim().replace(/[{}]/g, "");
+      return isGuid(s) ? s.toLowerCase() : "";
+    },
+    [isGuid]
+  );
+
+  // ✅ reportId for endpoints ONLY (prop > global > localStorage)
+  const reportId = useMemo(() => {
+    const fromProp = normalizeGuid(reportIdProp);
+    if (fromProp) return fromProp;
+
+    const fromGlobal = normalizeGuid(window.__REPORT_ID__);
+    if (fromGlobal) return fromGlobal;
+
+    const fromLS = normalizeGuid(localStorage.getItem("ccms_report_id"));
+    if (fromLS) return fromLS;
+
+    return "";
+  }, [reportIdProp, normalizeGuid]);
+
+  const withReport = useCallback(
+    (url) => {
+      if (!reportId) return url;
+      const hasQ = url.includes("?");
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+    },
+    [reportId]
+  );
+
+  const apiHeaders = useMemo(() => {
+    const h = { "Content-Type": "application/json" };
+    if (reportId) h["x-report-id"] = reportId;
+    return h;
+  }, [reportId]);
+
+  useEffect(() => {
     async function loadPrimariesAndAlternates() {
       try {
-        // ✅ Completion primaries
-        const res = await fetch(`${API_BASE}/completion`);
+        // ✅ Completion primaries (report-scoped)
+        const res = await fetch(withReport(`${API_BASE}/completion`), {
+          headers: reportId ? { "x-report-id": reportId } : undefined,
+        });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const rows = await res.json(); // expected: array of { CompletionId, Description, ... }
+
+        const json = await res.json();
+        const rows = Array.isArray(json)
+          ? json
+          : Array.isArray(json?.sample)
+          ? json.sample
+          : [];
 
         const formatted = await Promise.all(
-          (Array.isArray(rows) ? rows : []).map(async (r) => {
+          rows.map(async (r) => {
             const completionId = r.CompletionId;
 
             const primary = {
@@ -230,11 +304,14 @@ export default function BoxView4({ number, onBack }) {
               completionId,
             };
 
-            // ✅ AlternateCompletion rows for this CompletionId
+            // ✅ AlternateCompletion rows for this CompletionId (report-scoped)
             let alternates = [];
             try {
               const altRes = await fetch(
-                `${API_BASE}/completion/alternates/${encodeURIComponent(completionId)}`
+                withReport(
+                  `${API_BASE}/completion/alternates/${encodeURIComponent(completionId)}`
+                ),
+                { headers: reportId ? { "x-report-id": reportId } : undefined }
               );
 
               if (altRes.ok) {
@@ -274,14 +351,16 @@ export default function BoxView4({ number, onBack }) {
     }
 
     loadPrimariesAndAlternates();
-  }, []);
+  }, [reportId, withReport]);
 
-  const addSection = () => setSections((s) => [...s, starter.map((o) => ({ ...o }))]);
+  const addSection = () =>
+    setSections((s) => [...s, starter.map((o) => ({ ...o }))]);
 
   const updateSection = (sectionIndex, nextOptions) =>
     setSections((s) => s.map((opts, i) => (i === sectionIndex ? nextOptions : opts)));
 
-  const removeSection = (sectionIndex) => setSections((s) => s.filter((_, i) => i !== sectionIndex));
+  const removeSection = (sectionIndex) =>
+    setSections((s) => s.filter((_, i) => i !== sectionIndex));
 
   const isEmpty = (it) =>
     (!it?.description || !it.description.trim()) &&
@@ -289,172 +368,247 @@ export default function BoxView4({ number, onBack }) {
     (!it?.cost && it?.cost !== 0) &&
     (!it?.notes || !it.notes.trim());
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    console.log("Code", number, "-> payload:", sections);
+  // ✅ Save everything (used by Home button)
+  const saveAll = useCallback(async () => {
+    for (const row of sections) {
+      const primary = row?.[0];
+      if (!primary || isEmpty(primary)) continue;
 
-    try {
-      for (const row of sections) {
-        const primary = row?.[0];
-        if (!primary || isEmpty(primary)) continue;
+      // ==========================
+      // CASE 1: Existing Completion
+      // ==========================
+      if (primary.isExisting && primary.completionId) {
+        const completionId = primary.completionId;
 
-        // ==========================
-        // CASE 1: Existing Completion
-        // ==========================
-        if (primary.isExisting && primary.completionId) {
-          const completionId = primary.completionId;
-
-          // 1) UPDATE primary
-          const updRes = await fetch(`${API_BASE}/completion/${encodeURIComponent(completionId)}`, {
+        // 1) UPDATE primary
+        const updRes = await fetch(
+          withReport(`${API_BASE}/completion/${encodeURIComponent(completionId)}`),
+          {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            headers: apiHeaders,
             body: JSON.stringify({
               Description: String(primary.description ?? ""),
               Supplier: String(primary.supplier ?? ""),
               Cost: String(primary.cost ?? ""),
               Notes: String(primary.notes ?? ""),
             }),
-          });
-
-          const updData = await updRes.json().catch(() => ({}));
-          if (!updRes.ok) {
-            throw new Error(`Completion UPDATE failed: ${JSON.stringify(updData)}`);
           }
+        );
 
-          // 2) Alternates: update existing, post new
-          for (const alt of row.slice(1)) {
-            if (!alt || isEmpty(alt)) continue;
+        const updText = await updRes.text();
+        let updData;
+        try {
+          updData = JSON.parse(updText);
+        } catch {
+          updData = updText;
+        }
+        if (!updRes.ok) {
+          throw new Error(
+            `Completion UPDATE failed: ${
+              typeof updData === "string" ? updData : JSON.stringify(updData)
+            }`
+          );
+        }
 
-            // Existing alternate -> PUT
-            if (alt.isExistingAlt && alt.alternateId) {
-              const altUpdRes = await fetch(
-                `${API_BASE}/completion/alternates/${encodeURIComponent(alt.alternateId)}`,
-                {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    Description: String(alt.description ?? ""),
-                    Supplier: String(alt.supplier ?? ""),
-                    Cost: String(alt.cost ?? ""),
-                    Notes: String(alt.notes ?? ""),
-                    IsUsed: alt.used ? 1 : 0,
-                  }),
-                }
-              );
+        // 2) Alternates: update existing, post new
+        for (const alt of row.slice(1)) {
+          if (!alt || isEmpty(alt)) continue;
 
-              const altUpdData = await altUpdRes.json().catch(() => ({}));
-              if (!altUpdRes.ok) {
-                throw new Error(`AlternateCompletion UPDATE failed: ${JSON.stringify(altUpdData)}`);
-              }
-              continue;
-            }
-
-            // New alternate -> POST
-            if (!alt.isExistingAlt) {
-              const altRes = await fetch(`${API_BASE}/completion/alternates`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
+          // Existing alternate -> PUT
+          if (alt.isExistingAlt && alt.alternateId) {
+            const altUpdRes = await fetch(
+              withReport(
+                `${API_BASE}/completion/alternates/${encodeURIComponent(alt.alternateId)}`
+              ),
+              {
+                method: "PUT",
+                headers: apiHeaders,
                 body: JSON.stringify({
-                  CompletionId: completionId,
                   Description: String(alt.description ?? ""),
                   Supplier: String(alt.supplier ?? ""),
                   Cost: String(alt.cost ?? ""),
                   Notes: String(alt.notes ?? ""),
                   IsUsed: alt.used ? 1 : 0,
                 }),
-              });
-
-              const altData = await altRes.json().catch(() => ({}));
-              if (!altRes.ok) {
-                throw new Error(`AlternateCompletion POST failed: ${JSON.stringify(altData)}`);
               }
+            );
+
+            const altUpdText = await altUpdRes.text();
+            let altUpdData;
+            try {
+              altUpdData = JSON.parse(altUpdText);
+            } catch {
+              altUpdData = altUpdText;
             }
+
+            if (!altUpdRes.ok) {
+              throw new Error(
+                `AlternateCompletion UPDATE failed: ${
+                  typeof altUpdData === "string" ? altUpdData : JSON.stringify(altUpdData)
+                }`
+              );
+            }
+            continue;
           }
 
-          continue;
+          // New alternate -> POST
+          if (!alt.isExistingAlt) {
+            const altRes = await fetch(withReport(`${API_BASE}/completion/alternates`), {
+              method: "POST",
+              headers: apiHeaders,
+              body: JSON.stringify({
+                CompletionId: completionId,
+                Description: String(alt.description ?? ""),
+                Supplier: String(alt.supplier ?? ""),
+                Cost: String(alt.cost ?? ""),
+                Notes: String(alt.notes ?? ""),
+                IsUsed: alt.used ? 1 : 0,
+              }),
+            });
+
+            const altText = await altRes.text();
+            let altData;
+            try {
+              altData = JSON.parse(altText);
+            } catch {
+              altData = altText;
+            }
+
+            if (!altRes.ok) {
+              throw new Error(
+                `AlternateCompletion POST failed: ${
+                  typeof altData === "string" ? altData : JSON.stringify(altData)
+                }`
+              );
+            }
+          }
         }
 
-        // ======================
-        // CASE 2: New Completion
-        // ======================
-        const createRes = await fetch(`${API_BASE}/completion`, {
+        continue;
+      }
+
+      // ======================
+      // CASE 2: New Completion
+      // ======================
+      const createRes = await fetch(withReport(`${API_BASE}/completion`), {
+        method: "POST",
+        headers: apiHeaders,
+        body: JSON.stringify({
+          Description: String(primary.description ?? ""),
+          Supplier: String(primary.supplier ?? ""),
+          Cost: String(primary.cost ?? ""),
+          Notes: String(primary.notes ?? ""),
+        }),
+      });
+
+      const createText = await createRes.text();
+      let createData;
+      try {
+        createData = JSON.parse(createText);
+      } catch {
+        createData = createText;
+      }
+
+      if (!createRes.ok) {
+        throw new Error(
+          `Completion POST failed: ${
+            typeof createData === "string" ? createData : JSON.stringify(createData)
+          }`
+        );
+      }
+
+      const completionId =
+        createData.CompletionId || createData.completionId || createData.id;
+
+      if (!completionId) {
+        throw new Error("CompletionId missing from Completion POST response");
+      }
+
+      for (const alt of row.slice(1)) {
+        if (!alt || isEmpty(alt)) continue;
+
+        const altRes = await fetch(withReport(`${API_BASE}/completion/alternates`), {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: apiHeaders,
           body: JSON.stringify({
-            Description: String(primary.description ?? ""),
-            Supplier: String(primary.supplier ?? ""),
-            Cost: String(primary.cost ?? ""),
-            Notes: String(primary.notes ?? ""),
+            CompletionId: completionId,
+            Description: String(alt.description ?? ""),
+            Supplier: String(alt.supplier ?? ""),
+            Cost: String(alt.cost ?? ""),
+            Notes: String(alt.notes ?? ""),
+            IsUsed: alt.used ? 1 : 0,
           }),
         });
 
-        const createData = await createRes.json().catch(() => ({}));
-        if (!createRes.ok) throw new Error(`Completion POST failed: ${JSON.stringify(createData)}`);
+        const altText = await altRes.text();
+        let altData;
+        try {
+          altData = JSON.parse(altText);
+        } catch {
+          altData = altText;
+        }
 
-        const completionId =
-          createData.CompletionId || createData.completionId || createData.id;
-
-        if (!completionId) throw new Error("CompletionId missing from Completion POST response");
-
-        for (const alt of row.slice(1)) {
-          if (!alt || isEmpty(alt)) continue;
-
-          const altRes = await fetch(`${API_BASE}/completion/alternates`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              CompletionId: completionId,
-              Description: String(alt.description ?? ""),
-              Supplier: String(alt.supplier ?? ""),
-              Cost: String(alt.cost ?? ""),
-              Notes: String(alt.notes ?? ""),
-              IsUsed: alt.used ? 1 : 0,
-            }),
-          });
-
-          const altData = await altRes.json().catch(() => ({}));
-          if (!altRes.ok) {
-            throw new Error(`AlternateCompletion POST failed: ${JSON.stringify(altData)}`);
-          }
+        if (!altRes.ok) {
+          throw new Error(
+            `AlternateCompletion POST failed: ${
+              typeof altData === "string" ? altData : JSON.stringify(altData)
+            }`
+          );
         }
       }
-
-      alert("✅ Submitted changes to Completion (updated existing + created new items)!");
-    } catch (err) {
-      console.error("❌ Submit error:", err);
-      alert("❌ Submit failed: " + (err.message || err));
     }
-  };
+  }, [sections, apiHeaders, reportId, withReport]);
+
+  // ✅ Home button: save then immediately go back (no Submit button)
+  const handleHome = useCallback(async () => {
+    if (saving) return;
+    try {
+      setSaving(true);
+      await saveAll();
+      onBack && onBack();
+    } catch (err) {
+      console.error("❌ Save error:", err);
+      alert("❌ Save failed: " + (err.message || err));
+    } finally {
+      setSaving(false);
+    }
+  }, [saving, saveAll, onBack]);
 
   return (
     <div className="container py-4">
       <h2>Code {number}</h2>
       <p>Completion</p>
 
-      <form onSubmit={handleSubmit}>
-        {sections.map((opts, i) => (
-          <Section
-            key={i}
-            idx={i}
-            options={opts}
-            onChange={updateSection}
-            onRemoveSection={sections.length > 1 ? removeSection : undefined}
-          />
-        ))}
+      {sections.map((opts, i) => (
+        <Section
+          key={i}
+          idx={i}
+          options={opts}
+          onChange={updateSection}
+          onRemoveSection={sections.length > 1 ? removeSection : undefined}
+        />
+      ))}
 
-        <div className="d-flex flex-wrap gap-2 mb-4">
-          <button type="button" className="btn btn-outline-primary" onClick={addSection}>
-            + Add Item (starts with 2 alts)
-          </button>
-          <button type="submit" className="btn btn-secondary">
-            Submit changes
-          </button>
-        </div>
-      </form>
+      <div className="d-flex flex-wrap gap-2 mb-4">
+        <button
+          type="button"
+          className="btn btn-outline-primary"
+          onClick={addSection}
+          disabled={saving}
+        >
+          + Add Item (starts with 2 alts)
+        </button>
 
-      <button className="btn btn-dark" onClick={onBack}>
-        Back to Home
-      </button>
+        <button
+          type="button"
+          className="btn btn-dark"
+          onClick={handleHome}
+          disabled={saving}
+          title={saving ? "Saving..." : "Save and return to Home"}
+        >
+          {saving ? "Saving..." : "Home"}
+        </button>
+      </div>
     </div>
   );
 }

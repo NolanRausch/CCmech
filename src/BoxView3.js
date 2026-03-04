@@ -1,19 +1,13 @@
-import React, { useState } from 'react';
-import 'bootstrap/dist/css/bootstrap.min.css';
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import "bootstrap/dist/css/bootstrap.min.css";
 
-const API_BASE = "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
+const API_BASE =
+  "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
-const blank = { description: '', supplier: '', cost: '', notes: '' };
+const blank = { description: "", supplier: "", cost: "", notes: "" };
 const blankAlt = { ...blank, used: false, isExistingAlt: false, alternateId: undefined };
 
-function GridRow({
-  label,
-  value,
-  onChange,
-  showUsed = false,
-  onRemove,
-  removable = false,
-}) {
+function GridRow({ label, value, onChange, showUsed = false, onRemove, removable = false }) {
   const handle = (field) => (e) => onChange({ ...value, [field]: e.target.value });
 
   return (
@@ -48,9 +42,9 @@ function GridRow({
         <table className="table table-sm align-middle mb-0">
           <thead>
             <tr>
-              <th style={{ width: '28%' }}>Description</th>
-              <th style={{ width: '22%' }}>Supplier</th>
-              <th style={{ width: '15%' }}>Cost</th>
+              <th style={{ width: "28%" }}>Description</th>
+              <th style={{ width: "22%" }}>Supplier</th>
+              <th style={{ width: "15%" }}>Cost</th>
               <th>Notes</th>
             </tr>
           </thead>
@@ -61,7 +55,7 @@ function GridRow({
                   className="form-control"
                   type="text"
                   value={value.description}
-                  onChange={handle('description')}
+                  onChange={handle("description")}
                   placeholder="e.g., 20x20 air filter"
                 />
               </td>
@@ -70,7 +64,7 @@ function GridRow({
                   className="form-control"
                   type="text"
                   value={value.supplier}
-                  onChange={handle('supplier')}
+                  onChange={handle("supplier")}
                   placeholder="e.g., ACME Supply"
                 />
               </td>
@@ -81,7 +75,7 @@ function GridRow({
                   step="0.01"
                   min="0"
                   value={value.cost}
-                  onChange={handle('cost')}
+                  onChange={handle("cost")}
                   placeholder="0.00"
                 />
               </td>
@@ -90,7 +84,7 @@ function GridRow({
                   className="form-control"
                   type="text"
                   value={value.notes}
-                  onChange={handle('notes')}
+                  onChange={handle("notes")}
                   placeholder="Optional notes…"
                 />
               </td>
@@ -130,14 +124,16 @@ function Section({ idx, options, onChange, onRemoveSection }) {
             type="button"
             className="btn btn-sm btn-outline-secondary"
             onClick={() => setExpanded((v) => !v)}
-            title={expanded ? 'Hide alternates' : 'Show alternates'}
+            title={expanded ? "Hide alternates" : "Show alternates"}
             aria-expanded={expanded}
           >
-            {expanded ? '▾' : '▸'}
+            {expanded ? "▾" : "▸"}
           </button>
+
           <h6 className="mb-0">Item {idx + 1}</h6>
+
           <span className="text-muted small">
-            {Math.max(0, options.length - 1)} alternate{options.length - 1 === 1 ? '' : 's'}
+            {Math.max(0, options.length - 1)} alternate{options.length - 1 === 1 ? "" : "s"}
           </span>
         </div>
 
@@ -181,7 +177,7 @@ function Section({ idx, options, onChange, onRemoveSection }) {
             className="btn btn-primary btn-sm"
             onClick={addAlternate}
             disabled={options.length - 1 >= MAX_ALTS}
-            title={options.length - 1 >= MAX_ALTS ? 'Reached max alternates' : 'Add alternate'}
+            title={options.length - 1 >= MAX_ALTS ? "Reached max alternates" : "Add alternate"}
           >
             + Add Alternate
           </button>
@@ -191,248 +187,369 @@ function Section({ idx, options, onChange, onRemoveSection }) {
   );
 }
 
-export default function BoxView1({ number, onBack }) {
-  const starter = [
-    { ...blank, isExisting: false, eRoughId: undefined },
-    { ...blankAlt },
-    { ...blankAlt }
-  ];
+export default function BoxView1({ number, onBack, reportId: reportIdProp }) {
+  const starter = useMemo(
+    () => [
+      { ...blank, isExisting: false, eRoughId: undefined },
+      { ...blankAlt },
+      { ...blankAlt },
+    ],
+    []
+  );
 
-  const [sections, setSections] = React.useState([]);
-
-  React.useEffect(() => {
-    async function loadPrimariesAndAlternates() {
-      try {
-        // ✅ ERough primaries
-        const res = await fetch(`${API_BASE}/erough`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const rows = await res.json(); // expected: array of { ERoughId, Description, ... }
-
-        const formatted = await Promise.all(
-          (Array.isArray(rows) ? rows : []).map(async (r) => {
-            const eRoughId = r.ERoughId;
-
-            const primary = {
-              description: r.Description ?? "",
-              supplier:    r.Supplier ?? "",
-              cost:        r.Cost ?? "",
-              notes:       r.Notes ?? "",
-              isExisting:  true,
-              eRoughId
-            };
-
-            // ✅ ERough alternates
-            let alternates = [];
-            try {
-              const altRes = await fetch(
-                `${API_BASE}/erough/alternates/${encodeURIComponent(eRoughId)}`
-              );
-              if (altRes.ok) {
-                const altJson = await altRes.json();
-                const altRows = Array.isArray(altJson) ? altJson : (altJson?.sample || []);
-
-                alternates = altRows.map((a) => ({
-                  description:   a.Description ?? "",
-                  supplier:      a.Supplier ?? "",
-                  cost:          a.Cost ?? "",
-                  notes:         a.Notes ?? "",
-                  used:          Number(a.IsUsed) === 1,
-                  isExistingAlt: true,
-                  alternateId:   a.AlternateId
-                }));
-              }
-            } catch (err) {
-              console.warn("Failed to load alternates for", eRoughId, err);
-            }
-
-            alternates.push({ ...blankAlt });
-            return [primary, ...alternates];
-          })
-        );
-
-        setSections(formatted);
-      } catch (err) {
-        console.error("Failed to load erough:", err);
-        setSections([]);
-      }
-    }
-
-    loadPrimariesAndAlternates();
+  // -------------------------
+  // reportId helpers (match other viewers)
+  // -------------------------
+  const isGuid = useCallback((v) => {
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
+      String(v || "").trim().replace(/[{}]/g, "")
+    );
   }, []);
 
-  const addSection = () =>
+  const normalizeGuid = useCallback(
+    (v) => {
+      const s = String(v || "").trim().replace(/[{}]/g, "");
+      return isGuid(s) ? s.toLowerCase() : "";
+    },
+    [isGuid]
+  );
+
+  const reportId = useMemo(() => {
+    const fromProp = normalizeGuid(reportIdProp);
+    if (fromProp) return fromProp;
+
+    const fromGlobal = normalizeGuid(window.__REPORT_ID__);
+    if (fromGlobal) return fromGlobal;
+
+    const fromLS = normalizeGuid(localStorage.getItem("ccms_report_id"));
+    if (fromLS) return fromLS;
+
+    return "";
+  }, [reportIdProp, normalizeGuid]);
+
+  const withReport = useCallback(
+    (url) => {
+      if (!reportId) return url;
+      const hasQ = url.includes("?");
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+    },
+    [reportId]
+  );
+
+  const fetchJson = useCallback(
+    async (url, opts = {}) => {
+      const headers = {
+        ...(opts.headers || {}),
+        "Content-Type": "application/json",
+        ...(reportId ? { "x-report-id": reportId } : {}),
+      };
+
+      const res = await fetch(url, { ...opts, headers });
+      const data = await res.json().catch(() => ({}));
+      return { res, data };
+    },
+    [reportId]
+  );
+
+  const [sections, setSections] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const addSection = useCallback(() => {
     setSections((s) => [...s, starter.map((o) => ({ ...o }))]);
+  }, [starter]);
 
-  const updateSection = (sectionIndex, nextOptions) =>
+  const updateSection = useCallback((sectionIndex, nextOptions) => {
     setSections((s) => s.map((opts, i) => (i === sectionIndex ? nextOptions : opts)));
+  }, []);
 
-  const removeSection = (sectionIndex) =>
+  const removeSection = useCallback((sectionIndex) => {
     setSections((s) => s.filter((_, i) => i !== sectionIndex));
+  }, []);
 
-  const isEmpty = (it) =>
-    (!it?.description || !it.description.trim()) &&
-    (!it?.supplier || !it.supplier.trim()) &&
-    (!it?.cost && it?.cost !== 0) &&
-    (!it?.notes || !it.notes.trim());
+  const isEmpty = useCallback((it) => {
+    return (
+      (!it?.description || !it.description.trim()) &&
+      (!it?.supplier || !it.supplier.trim()) &&
+      (!it?.cost && it?.cost !== 0) &&
+      (!it?.notes || !it.notes.trim())
+    );
+  }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    console.log('Code', number, '-> payload:', sections);
-
+  // -------------------------
+  // LOAD primaries + alternates (report endpoints)
+  // -------------------------
+  const load = useCallback(async () => {
     try {
-      for (const row of sections) {
-        const primary = row?.[0];
-        if (!primary || isEmpty(primary)) continue;
+      setLoading(true);
+      setError(null);
 
-        // ======================
-        // CASE 1: Existing ERough
-        // ======================
-        if (primary.isExisting && primary.eRoughId) {
-          const eRoughId = primary.eRoughId;
+      if (!reportId) {
+        setSections([]);
+        setError("Missing reportId (required).");
+        return;
+      }
 
-          // 1) UPDATE primary ERough
-          const updRes = await fetch(
-            `${API_BASE}/erough/${encodeURIComponent(eRoughId)}`,
+      const { res, data } = await fetchJson(withReport(`${API_BASE}/erough`), { method: "GET" });
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      const rows = Array.isArray(data) ? data : Array.isArray(data?.sample) ? data.sample : [];
+
+      const formatted = await Promise.all(
+        rows.map(async (r) => {
+          const eRoughId = r.ERoughId;
+
+          const primary = {
+            description: r.Description ?? "",
+            supplier: r.Supplier ?? "",
+            cost: r.Cost ?? "",
+            notes: r.Notes ?? "",
+            isExisting: true,
+            eRoughId,
+          };
+
+          let alternates = [];
+          try {
+            const { res: altRes, data: altJson } = await fetchJson(
+              withReport(`${API_BASE}/erough/alternates/${encodeURIComponent(eRoughId)}`),
+              { method: "GET" }
+            );
+
+            if (altRes.ok) {
+              const altRows = Array.isArray(altJson)
+                ? altJson
+                : Array.isArray(altJson?.sample)
+                ? altJson.sample
+                : [];
+
+              alternates = altRows.map((a) => ({
+                description: a.Description ?? "",
+                supplier: a.Supplier ?? "",
+                cost: a.Cost ?? "",
+                notes: a.Notes ?? "",
+                used: Number(a.IsUsed) === 1 || a.IsUsed === true,
+                isExistingAlt: true,
+                alternateId: a.AlternateId,
+              }));
+            }
+          } catch (err) {
+            console.warn("Failed to load alternates for", eRoughId, err);
+          }
+
+          alternates.push({ ...blankAlt });
+          return [primary, ...alternates];
+        })
+      );
+
+      // always keep at least 1 section
+      setSections(formatted.length ? formatted : [starter.map((o) => ({ ...o }))]);
+    } catch (e) {
+      setError(e.message || String(e));
+      setSections([starter.map((o) => ({ ...o }))]);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchJson, reportId, starter, withReport]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // -------------------------
+  // SUBMIT helper (no UI submit button)
+  // -------------------------
+  const submitAll = useCallback(async () => {
+    if (!reportId) throw new Error("Missing reportId (required).");
+
+    for (const row of sections) {
+      const primary = row?.[0];
+      if (!primary || isEmpty(primary)) continue;
+
+      // Existing ERough
+      if (primary.isExisting && primary.eRoughId) {
+        const eRoughId = primary.eRoughId;
+
+        // UPDATE primary
+        {
+          const { res: updRes, data: updData } = await fetchJson(
+            withReport(`${API_BASE}/erough/${encodeURIComponent(eRoughId)}`),
             {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
+              method: "PUT",
               body: JSON.stringify({
-                Description: String(primary.description ?? ''),
-                Supplier:    String(primary.supplier ?? ''),
-                Cost:        String(primary.cost ?? ''),
-                Notes:       String(primary.notes ?? '')
-              })
+                reportId,
+                Description: String(primary.description ?? ""),
+                Supplier: String(primary.supplier ?? ""),
+                Cost: String(primary.cost ?? ""),
+                Notes: String(primary.notes ?? ""),
+              }),
             }
           );
-          const updData = await updRes.json().catch(() => ({}));
-          if (!updRes.ok) {
-            throw new Error(`ERough UPDATE failed: ${JSON.stringify(updData)}`);
-          }
 
-          // 2) Alternates: update existing, post new
-          for (const alt of row.slice(1)) {
-            if (!alt || isEmpty(alt)) continue;
-
-            // Existing alternate -> PUT
-            if (alt.isExistingAlt && alt.alternateId) {
-              const altUpdRes = await fetch(
-                `${API_BASE}/erough/alternates/${encodeURIComponent(alt.alternateId)}`,
-                {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    Description: String(alt.description ?? ''),
-                    Supplier:    String(alt.supplier ?? ''),
-                    Cost:        String(alt.cost ?? ''),
-                    Notes:       String(alt.notes ?? ''),
-                    IsUsed:      alt.used ? 1 : 0
-                  })
-                }
-              );
-              const altUpdData = await altUpdRes.json().catch(() => ({}));
-              if (!altUpdRes.ok) {
-                throw new Error(`AlternateERough UPDATE failed: ${JSON.stringify(altUpdData)}`);
-              }
-              continue;
-            }
-
-            // New alternate -> POST
-            if (!alt.isExistingAlt) {
-              const altRes = await fetch(`${API_BASE}/erough/alternates`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  ERoughId:     eRoughId,
-                  Description:  String(alt.description ?? ''),
-                  Supplier:     String(alt.supplier ?? ''),
-                  Cost:         String(alt.cost ?? ''),
-                  Notes:        String(alt.notes ?? ''),
-                  IsUsed:       alt.used ? 1 : 0
-                })
-              });
-              const altData = await altRes.json().catch(() => ({}));
-              if (!altRes.ok) throw new Error(`AlternateERough POST failed: ${JSON.stringify(altData)}`);
-            }
-          }
-
-          continue;
+          if (!updRes.ok) throw new Error(`ERough UPDATE failed: ${JSON.stringify(updData)}`);
         }
 
-        // ======================
-        // CASE 2: New ERough
-        // ======================
-        const createRes = await fetch(`${API_BASE}/erough`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            Description: String(primary.description ?? ''),
-            Supplier:    String(primary.supplier ?? ''),
-            Cost:        String(primary.cost ?? ''),
-            Notes:       String(primary.notes ?? '')
-          })
-        });
-        const createData = await createRes.json().catch(() => ({}));
-        if (!createRes.ok) throw new Error(`ERough POST failed: ${JSON.stringify(createData)}`);
-
-        const eRoughId = createData.ERoughId || createData.eroughId || createData.id;
-        if (!eRoughId) throw new Error('ERoughId missing from ERough POST response');
-
+        // Alternates: update existing, post new
         for (const alt of row.slice(1)) {
           if (!alt || isEmpty(alt)) continue;
 
-          const altRes = await fetch(`${API_BASE}/erough/alternates`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ERoughId:     eRoughId,
-              Description:  String(alt.description ?? ''),
-              Supplier:     String(alt.supplier ?? ''),
-              Cost:         String(alt.cost ?? ''),
-              Notes:        String(alt.notes ?? ''),
-              IsUsed:       alt.used ? 1 : 0
-            })
-          });
-          const altData = await altRes.json().catch(() => ({}));
-          if (!altRes.ok) throw new Error(`AlternateERough POST failed: ${JSON.stringify(altData)}`);
+          // Existing alt -> PUT
+          if (alt.isExistingAlt && alt.alternateId) {
+            const { res: altUpdRes, data: altUpdData } = await fetchJson(
+              withReport(`${API_BASE}/erough/alternates/${encodeURIComponent(alt.alternateId)}`),
+              {
+                method: "PUT",
+                body: JSON.stringify({
+                  reportId,
+                  Description: String(alt.description ?? ""),
+                  Supplier: String(alt.supplier ?? ""),
+                  Cost: String(alt.cost ?? ""),
+                  Notes: String(alt.notes ?? ""),
+                  IsUsed: alt.used ? 1 : 0,
+                }),
+              }
+            );
+
+            if (!altUpdRes.ok) {
+              throw new Error(`AlternateERough UPDATE failed: ${JSON.stringify(altUpdData)}`);
+            }
+            continue;
+          }
+
+          // New alt -> POST
+          if (!alt.isExistingAlt) {
+            const { res: altRes, data: altData } = await fetchJson(
+              withReport(`${API_BASE}/erough/alternates`),
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  reportId,
+                  ERoughId: eRoughId,
+                  Description: String(alt.description ?? ""),
+                  Supplier: String(alt.supplier ?? ""),
+                  Cost: String(alt.cost ?? ""),
+                  Notes: String(alt.notes ?? ""),
+                  IsUsed: alt.used ? 1 : 0,
+                }),
+              }
+            );
+
+            if (!altRes.ok) throw new Error(`AlternateERough POST failed: ${JSON.stringify(altData)}`);
+          }
         }
+
+        continue;
       }
 
-      alert('✅ Submitted changes to ERough (updated existing + created new items)!');
-    } catch (err) {
-      console.error('❌ Submit error:', err);
-      alert('❌ Submit failed: ' + (err.message || err));
+      // New ERough -> POST
+      const { res: createRes, data: createData } = await fetchJson(withReport(`${API_BASE}/erough`), {
+        method: "POST",
+        body: JSON.stringify({
+          reportId,
+          Description: String(primary.description ?? ""),
+          Supplier: String(primary.supplier ?? ""),
+          Cost: String(primary.cost ?? ""),
+          Notes: String(primary.notes ?? ""),
+        }),
+      });
+
+      if (!createRes.ok) throw new Error(`ERough POST failed: ${JSON.stringify(createData)}`);
+
+      const eRoughId = createData.ERoughId || createData.eroughId || createData.id;
+      if (!eRoughId) throw new Error("ERoughId missing from ERough POST response");
+
+      for (const alt of row.slice(1)) {
+        if (!alt || isEmpty(alt)) continue;
+
+        const { res: altRes, data: altData } = await fetchJson(
+          withReport(`${API_BASE}/erough/alternates`),
+          {
+            method: "POST",
+            body: JSON.stringify({
+              reportId,
+              ERoughId: eRoughId,
+              Description: String(alt.description ?? ""),
+              Supplier: String(alt.supplier ?? ""),
+              Cost: String(alt.cost ?? ""),
+              Notes: String(alt.notes ?? ""),
+              IsUsed: alt.used ? 1 : 0,
+            }),
+          }
+        );
+
+        if (!altRes.ok) throw new Error(`AlternateERough POST failed: ${JSON.stringify(altData)}`);
+      }
     }
-  };
+  }, [fetchJson, isEmpty, reportId, sections, withReport]);
+
+  // ✅ Home button: submit, then refresh, then go back (like your other BoxViews)
+  const onHomeClick = useCallback(async () => {
+    if (saving) return;
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      await submitAll();
+
+      alert("✅ Saved!");
+      await load();
+      onBack?.();
+    } catch (e) {
+      console.error("❌ Save error:", e);
+      setError(e.message || String(e));
+      alert("❌ Save failed: " + (e.message || e));
+    } finally {
+      setSaving(false);
+    }
+  }, [load, onBack, saving, submitAll]);
+
+  if (loading) return <p className="p-3">Loading…</p>;
+  if (error) return <p className="p-3 text-danger">Error: {error}</p>;
 
   return (
     <div className="container py-4">
-      <h2>Code {number}</h2>
-      <p>ERough</p>
+      {/* TOP BAR like the others: Home (save+back) + Add */}
+      <div className="d-flex align-items-center justify-content-between mb-3">
+        <button type="button" className="btn btn-dark" onClick={onHomeClick} disabled={saving || !reportId}>
+          {saving ? "Saving..." : "Home"}
+        </button>
 
-      <form onSubmit={handleSubmit}>
-        {sections.map((opts, i) => (
-          <Section
-            key={i}
-            idx={i}
-            options={opts}
-            onChange={updateSection}
-            onRemoveSection={sections.length > 1 ? removeSection : undefined}
-          />
-        ))}
-
-        <div className="d-flex flex-wrap gap-2 mb-4">
-          <button type="button" className="btn btn-outline-primary" onClick={addSection}>
-            + Add Item (starts with 2 alts)
-          </button>
-          <button type="submit" className="btn btn-secondary">
-            Submit changes
-          </button>
+        <div className="text-center">
+          <div className="fw-semibold">ERough Input</div>
+          <div className="text-muted small">Code {number}</div>
         </div>
-      </form>
 
-      <button className="btn btn-dark" onClick={onBack}>
-        Back to Home
-      </button>
+        <button
+          type="button"
+          className="btn btn-outline-primary"
+          onClick={addSection}
+          disabled={saving || !reportId}
+          title={!reportId ? "Set reportId first" : "Add item"}
+        >
+          +
+        </button>
+      </div>
+
+      {!reportId && (
+        <div className="alert alert-danger">
+          Missing <strong>reportId</strong>. Set it on Home first (this API is report-scoped).
+        </div>
+      )}
+
+      {sections.map((opts, i) => (
+        <Section
+          key={i}
+          idx={i}
+          options={opts}
+          onChange={updateSection}
+          onRemoveSection={sections.length > 1 ? removeSection : undefined}
+        />
+      ))}
+
+      <div className="text-muted mt-2 small">
+        Note: Home saves everything and returns to the previous screen.
+      </div>
     </div>
   );
 }

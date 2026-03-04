@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
-import BoxViewLabor from "./BoxViewLabor"; // ✅ make this editor use /labor endpoints
+import BoxViewLabor from "./BoxViewLabor";
 
-export default function LaborViewer({ onTotalsChange }) {
+export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -15,6 +15,45 @@ export default function LaborViewer({ onTotalsChange }) {
   const CODE_NUMBER = "4000";
   const BLUE = "#0b2a4a";
 
+  // -------------------------
+  // reportId helpers (TEMPLATE)
+  // -------------------------
+  const isGuid = useCallback((v) => {
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
+      String(v || "").trim().replace(/[{}]/g, "")
+    );
+  }, []);
+
+  const normalizeGuid = useCallback(
+    (v) => {
+      const s = String(v || "").trim().replace(/[{}]/g, "");
+      return isGuid(s) ? s.toLowerCase() : "";
+    },
+    [isGuid]
+  );
+
+  const reportId = useMemo(() => {
+    const fromProp = normalizeGuid(reportIdProp);
+    if (fromProp) return fromProp;
+
+    const fromGlobal = normalizeGuid(window.__REPORT_ID__);
+    if (fromGlobal) return fromGlobal;
+
+    const fromLS = normalizeGuid(localStorage.getItem("ccms_report_id"));
+    if (fromLS) return fromLS;
+
+    return "";
+  }, [reportIdProp, normalizeGuid]);
+
+  const withReport = useCallback(
+    (url) => {
+      if (!reportId) return url;
+      const hasQ = url.includes("?");
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+    },
+    [reportId]
+  );
+
   const isSub = (t) => String(t || "").trim().toLowerCase() === "subcontractor";
 
   const parseNum = useCallback((val) => {
@@ -22,7 +61,6 @@ export default function LaborViewer({ onTotalsChange }) {
     return isNaN(n) ? 0 : n;
   }, []);
 
-  // ✅ Correct money formatting: 30000 -> $30,000.00
   const fmtMoney = useCallback(
     (val) => {
       const n = parseNum(val);
@@ -43,12 +81,20 @@ export default function LaborViewer({ onTotalsChange }) {
       setLoading(true);
       setError(null);
 
-      const res = await fetch(
-        `${API_BASE}/labor/code/${encodeURIComponent(CODE_NUMBER)}`
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const url = withReport(`${API_BASE}/labor/code/4000`);
+      console.log("LaborViewer fetchRows:", { url, reportId, CODE_NUMBER });
 
-      const json = await res.json();
+      const res = await fetch(url, {
+        method: "GET",
+        headers: reportId ? { "x-report-id": reportId } : undefined,
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+
+      const json = await res.json().catch(() => null);
       const list = Array.isArray(json)
         ? json
         : Array.isArray(json?.sample)
@@ -58,10 +104,11 @@ export default function LaborViewer({ onTotalsChange }) {
       setRows(list);
     } catch (e) {
       setError(e.message || String(e));
+      setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [API_BASE, CODE_NUMBER]);
+  }, [API_BASE, CODE_NUMBER, reportId, withReport]);
 
   useEffect(() => {
     fetchRows();
@@ -71,8 +118,13 @@ export default function LaborViewer({ onTotalsChange }) {
     try {
       setDeletingId(laborId);
 
-      const url = `${API_BASE}/labor/${encodeURIComponent(laborId)}`;
-      const res = await fetch(url, { method: "DELETE" });
+      const url = withReport(`${API_BASE}/labor/${encodeURIComponent(laborId)}`);
+      console.log("LaborViewer delete:", { url, laborId, reportId });
+
+      const res = await fetch(url, {
+        method: "DELETE",
+        headers: reportId ? { "x-report-id": reportId } : undefined,
+      });
 
       const text = await res.text();
       let data;
@@ -97,7 +149,6 @@ export default function LaborViewer({ onTotalsChange }) {
     }
   };
 
-  // ✅ Totals ONLY (no Totals-by-Type section)
   const totals = useMemo(() => {
     return rows.reduce(
       (acc, r) => {
@@ -109,7 +160,6 @@ export default function LaborViewer({ onTotalsChange }) {
     );
   }, [rows, parseNum]);
 
-  // ✅ Report totals up to Home (deduped)
   const lastSentRef = useRef(null);
 
   useEffect(() => {
@@ -146,7 +196,7 @@ export default function LaborViewer({ onTotalsChange }) {
     );
   }
 
-  // ✅ fixed widths for small columns so Notes gets the remaining space
+  // Column sizing + clamping (your additions kept)
   const col = {
     idx: { width: "3.25rem", whiteSpace: "nowrap" },
     type: { width: "12rem", maxWidth: "12rem" },
@@ -159,7 +209,6 @@ export default function LaborViewer({ onTotalsChange }) {
 
   return (
     <div className="container py-4">
-      {/* ✅ Input LEFT + LABOR all caps blue */}
       <div className="d-flex align-items-center gap-3 mb-3">
         <button
           className="btn btn-outline-secondary btn-lg"
@@ -171,6 +220,12 @@ export default function LaborViewer({ onTotalsChange }) {
         <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
           Labor
         </h5>
+
+        {!reportId && (
+          <span className="badge text-bg-warning ms-auto">
+            Missing valid reportId
+          </span>
+        )}
       </div>
 
       <div
@@ -182,7 +237,6 @@ export default function LaborViewer({ onTotalsChange }) {
           borderRadius: "6px",
         }}
       >
-        {/* table-fixed so widths stick + Notes takes remaining width */}
         <table className="table table-striped table-hover table-sm mb-0 table-fixed">
           <thead
             className="table-dark"
@@ -190,31 +244,22 @@ export default function LaborViewer({ onTotalsChange }) {
               position: "sticky",
               top: 0,
               zIndex: 2,
-              backgroundColor: BLUE, // ✅ dark blue header bar
+              backgroundColor: BLUE,
             }}
           >
             <tr>
               <th style={{ ...col.idx, backgroundColor: BLUE }}>#</th>
-
-              {/* ✅ removed Code column */}
               <th style={{ ...col.type, backgroundColor: BLUE }}>Labor Type</th>
-
-              {/* ✅ only meaningful for Subcontractor rows */}
               <th style={{ ...col.subName, backgroundColor: BLUE }}>
                 Subcontractor Name
               </th>
-
               <th style={{ ...col.hours, backgroundColor: BLUE }}>Hours</th>
               <th style={{ ...col.cost, backgroundColor: BLUE }}>Labor Cost</th>
-
-              {/* ✅ Notes is flexible */}
               <th style={{ backgroundColor: BLUE }}>Notes</th>
-
               <th style={{ ...col.actions, backgroundColor: BLUE }}>Actions</th>
             </tr>
           </thead>
 
-          {/* ✅ No "No labor records found" row; table can be empty */}
           <tbody>
             {rows.map((r, i) => (
               <tr key={r.LaborId || `row-${i}`}>
@@ -238,7 +283,6 @@ export default function LaborViewer({ onTotalsChange }) {
                     className="btn btn-sm btn-outline-danger"
                     onClick={() => handleDelete(r.LaborId)}
                     disabled={deletingId === r.LaborId}
-                    title="Delete this labor item"
                   >
                     {deletingId === r.LaborId ? "Deleting…" : "Clear"}
                   </button>
@@ -261,14 +305,9 @@ export default function LaborViewer({ onTotalsChange }) {
         </table>
       </div>
 
-      {/* ✅ removed the "Code Number 4000" display */}
-
       <style>{`
         .table-fixed { table-layout: fixed; width: 100%; }
       `}</style>
     </div>
   );
 }
-
-
-

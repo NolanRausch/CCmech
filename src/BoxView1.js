@@ -1,10 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 const API_BASE =
   "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
-// ✅ labor fields REMOVED
+// ✅ non-labor fields
 const blank = {
   description: "",
   supplier: "",
@@ -17,6 +17,19 @@ const blankAlt = {
   used: false,
   isExistingAlt: false,
   alternateId: undefined,
+};
+
+// -------------------------
+// reportId helpers
+// -------------------------
+const isGuid = (v) =>
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
+    String(v || "").trim().replace(/[{}]/g, "")
+  );
+
+const normalizeGuid = (v) => {
+  const s = String(v || "").trim().replace(/[{}]/g, "");
+  return isGuid(s) ? s.toLowerCase() : "";
 };
 
 // Reusable row (Primary or Alternate)
@@ -224,25 +237,91 @@ function Section({ idx, options, onChange, onRemoveSection }) {
   );
 }
 
-export default function BoxView1({ number, onBack }) {
+export default function BoxView1({ number, reportId: reportIdProp, onBack }) {
+  // ✅ FIX: use ccms_report_id (matches rest of app)
+  const reportId = useMemo(() => {
+    const fromProp = normalizeGuid(reportIdProp);
+    if (fromProp) return fromProp;
+
+    const fromNumber = normalizeGuid(number);
+    if (fromNumber) return fromNumber;
+
+    const fromLS = normalizeGuid(localStorage.getItem("ccms_report_id"));
+    if (fromLS) return fromLS;
+
+    return "";
+  }, [number, reportIdProp]);
+
   // Start with primary + 2 alternates for brand-new sections
-  const starter = [
-    { ...blank, isExisting: false, equipmentId: undefined },
-    { ...blankAlt },
-    { ...blankAlt },
-  ];
+  const starter = useMemo(
+    () => [
+      { ...blank, isExisting: false, equipmentId: undefined },
+      { ...blankAlt },
+      { ...blankAlt },
+    ],
+    []
+  );
 
-  const [sections, setSections] = React.useState([]);
-  const [submitting, setSubmitting] = React.useState(false);
+  const [sections, setSections] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  React.useEffect(() => {
+  // ----- POPUP CALL LOG -----
+  //const [callLog, setCallLog] = useState([]);
+  //const [showCallLog, setShowCallLog] = useState(false);
+
+  const isEmpty = (it) =>
+    (!it?.description || !it.description.trim()) &&
+    (!it?.supplier || !it.supplier.trim()) &&
+    (!it?.cost && it?.cost !== 0) &&
+    (!it?.notes || !it.notes.trim());
+
+  const toPayload = (x) => ({
+    Description: String(x.description ?? ""),
+    Supplier: String(x.supplier ?? ""),
+    Cost: String(x.cost ?? ""),
+    Notes: String(x.notes ?? ""),
+  });
+
+  const withReport = (url) => {
+    if (!reportId) return url;
+    const hasQ = url.includes("?");
+    return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+  };
+
+  // ✅ fetchJson that records EVERY call (method/url/status)
+const fetchJson = async (url, opts = {}) => {
+  const headers = {
+    ...(opts.headers || {}),
+    "Content-Type": "application/json",
+    ...(reportId ? { "x-report-id": reportId } : {}),
+  };
+
+  const res = await fetch(url, { ...opts, headers });
+  const data = await res.json().catch(() => ({}));
+  return { res, data };
+};
+
+  useEffect(() => {
     async function loadPrimariesAndAlternates() {
-      try {
-        const res = await fetch(`${API_BASE}/db-test`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+      setLoading(true);
 
-        const rows = Array.isArray(data?.sample) ? data.sample : [];
+      if (!reportId) {
+        setSections([]);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // reset call log for this load
+       // setCallLog([]);
+
+        const { res, data } = await fetchJson(withReport(`${API_BASE}/equipment`), {
+          method: "GET",
+        });
+        if (!res.ok) throw new Error(`Equipment GET failed`);
+
+        const rows = Array.isArray(data) ? data : [];
 
         const formatted = await Promise.all(
           rows.map(async (r) => {
@@ -254,36 +333,33 @@ export default function BoxView1({ number, onBack }) {
               cost: r.Cost ?? "",
               notes: r.Notes ?? "",
               isExisting: true,
-              equipmentId: equipmentId,
+              equipmentId,
             };
 
-            // Fetch alternates for this equipment
             let alternates = [];
             try {
-              const altRes = await fetch(
-                `${API_BASE}/db-test-alternate/${encodeURIComponent(equipmentId)}`
+              const altUrl = withReport(
+                `${API_BASE}/equipment/alternates/${encodeURIComponent(equipmentId)}`
               );
-              if (altRes.ok) {
-                const altData = await altRes.json();
-                const altRows = Array.isArray(altData?.sample)
-                  ? altData.sample
-                  : [];
+              const alt = await fetchJson(altUrl, { method: "GET" });
 
+              if (alt.res.ok) {
+                const altRows = Array.isArray(alt.data) ? alt.data : [];
                 alternates = altRows.map((a) => ({
                   description: a.Description ?? "",
                   supplier: a.Supplier ?? "",
                   cost: a.Cost ?? "",
                   notes: a.Notes ?? "",
-                  used: Number(a.IsUsed) === 1,
+                  used: a.IsUsed === true || Number(a.IsUsed) === 1,
                   isExistingAlt: true,
-                  alternateId: a.AlternateId, // keep ID so we can PUT
+                  alternateId: a.AlternateId,
                 }));
               }
-            } catch (err) {
-              console.warn("Failed to load alternates for", equipmentId, err);
+            } catch {
+              // keep going
             }
 
-            // Add one blank "new alternate" slot at the end
+            // Always add one blank "new alternate" slot at the end
             alternates.push({ ...blankAlt });
 
             return [primary, ...alternates];
@@ -291,15 +367,15 @@ export default function BoxView1({ number, onBack }) {
         );
 
         setSections(formatted);
-        console.log("Loaded sections (with alternates):", formatted);
       } catch (err) {
-        console.error("Failed to load db-test:", err);
         setSections([]);
+      } finally {
+        setLoading(false);
       }
     }
 
     loadPrimariesAndAlternates();
-  }, []);
+  }, [reportId]); // yes: re-load when report changes
 
   const addSection = () =>
     setSections((s) => [...s, starter.map((o) => ({ ...o }))]);
@@ -312,166 +388,107 @@ export default function BoxView1({ number, onBack }) {
   const removeSection = (sectionIndex) =>
     setSections((s) => s.filter((_, i) => i !== sectionIndex));
 
+  // ✅ Submit that ALWAYS logs calls & includes alternates
   const handleSubmit = async () => {
-    console.log("Code", number, "-> payload:", sections);
-
-    const isEmpty = (it) =>
-      (!it?.description || !it.description.trim()) &&
-      (!it?.supplier || !it.supplier.trim()) &&
-      (!it?.cost && it?.cost !== 0) &&
-      (!it?.notes || !it.notes.trim());
-
-    const toPayload = (x) => ({
-      Description: String(x.description ?? ""),
-      Supplier: String(x.supplier ?? ""),
-      Cost: String(x.cost ?? ""),
-      Notes: String(x.notes ?? ""),
-    });
+    if (!reportId) {
+      alert("❌ Missing reportId (required).");
+      return false;
+    }
 
     try {
+      // reset call log for this submit so popup shows submit calls
+    //  setCallLog([]);
+
       for (const row of sections) {
         const primary = row?.[0];
-        if (!primary || isEmpty(primary)) {
-          console.warn("Skipping empty primary row");
-          continue;
-        }
+        if (!primary || isEmpty(primary)) continue;
 
-        // 🔹 CASE 1: Existing equipment (update it + its alternates)
-        if (primary.isExisting && primary.equipmentId) {
-          const equipmentId = primary.equipmentId;
+        let equipmentId = primary.equipmentId;
 
-          // 1) UPDATE the primary equipment
-          const equipUpdateRes = await fetch(
-            `${API_BASE}/equipment/${encodeURIComponent(equipmentId)}`,
+        // 1) Update existing primary
+        if (primary.isExisting && equipmentId) {
+          const { res, data } = await fetchJson(
+            withReport(`${API_BASE}/equipment/${encodeURIComponent(equipmentId)}`),
             {
               method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(toPayload(primary)),
+              body: JSON.stringify({ reportId, ...toPayload(primary) }),
             }
           );
-
-          const equipUpdateData = await equipUpdateRes.json().catch(() => ({}));
-          if (!equipUpdateRes.ok) {
-            throw new Error(
-              `Equipment UPDATE failed: ${JSON.stringify(equipUpdateData)}`
-            );
-          }
-
-          // 2) Handle alternates
-          const alts = row.slice(1);
-
-          for (const alt of alts) {
-            if (!alt || isEmpty(alt)) continue;
-
-            // Existing alternate → UPDATE
-            if (alt.isExistingAlt && alt.alternateId) {
-              const altUpdateRes = await fetch(
-                `${API_BASE}/equipment/alternates/${encodeURIComponent(
-                  alt.alternateId
-                )}`,
-                {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    ...toPayload(alt),
-                    IsUsed: alt.used ? 1 : 0,
-                  }),
-                }
-              );
-
-              const altUpdateData = await altUpdateRes
-                .json()
-                .catch(() => ({}));
-              if (!altUpdateRes.ok) {
-                throw new Error(
-                  `Alternate UPDATE failed: ${JSON.stringify(altUpdateData)}`
-                );
-              }
-              continue;
-            }
-
-            // New alternate → POST
-            if (!alt.isExistingAlt) {
-              const altRes = await fetch(`${API_BASE}/equipment/alternates`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  EquipmentId: equipmentId,
-                  ...toPayload(alt),
-                  IsUsed: alt.used ? 1 : 0,
-                }),
-              });
-
-              const altData = await altRes.json().catch(() => ({}));
-              if (!altRes.ok)
-                throw new Error(
-                  `Alternate POST failed: ${JSON.stringify(altData)}`
-                );
-            }
-          }
-
-          continue;
+          if (!res.ok) throw new Error(data?.error || "Equipment UPDATE failed");
         }
 
-        // 🔹 CASE 2: Brand-new equipment (create + its alternates)
-        const equipRes = await fetch(`${API_BASE}/equipment`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(toPayload(primary)),
-        });
+        // 2) Create new primary first (so we have equipmentId for alternates)
+        if (!primary.isExisting) {
+          const { res, data } = await fetchJson(withReport(`${API_BASE}/equipment`), {
+            method: "POST",
+            body: JSON.stringify({ reportId, ...toPayload(primary) }),
+          });
+          if (!res.ok) throw new Error(data?.error || "Equipment POST failed");
 
-        const equipData = await equipRes.json().catch(() => ({}));
-        if (!equipRes.ok)
-          throw new Error(`Equipment POST failed: ${JSON.stringify(equipData)}`);
+          equipmentId = data?.EquipmentId || data?.equipmentId || data?.id;
+          if (!equipmentId) throw new Error("EquipmentId missing from POST response");
+        }
 
-        const equipmentId = equipData.EquipmentId || equipData.equipmentId || equipData.id;
-        if (!equipmentId)
-          throw new Error("EquipmentId missing from equipment POST response");
-
-        const alts = row.slice(1);
+        // 3) Alternates (POST/PUT)
+        const alts = Array.isArray(row) ? row.slice(1) : [];
         for (const alt of alts) {
           if (!alt || isEmpty(alt)) continue;
 
-          const altRes = await fetch(`${API_BASE}/equipment/alternates`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              EquipmentId: equipmentId,
-              ...toPayload(alt),
-              IsUsed: alt.used ? 1 : 0,
-            }),
-          });
+          // Existing alt -> PUT
+          if (alt.isExistingAlt && alt.alternateId) {
+            const { res, data } = await fetchJson(
+              withReport(
+                `${API_BASE}/equipment/alternates/${encodeURIComponent(alt.alternateId)}`
+              ),
+              {
+                method: "PUT",
+                body: JSON.stringify({
+                  reportId,
+                  ...toPayload(alt),
+                  IsUsed: alt.used ? 1 : 0,
+                }),
+              }
+            );
+            if (!res.ok) throw new Error(data?.error || "Alternate UPDATE failed");
+            continue;
+          }
 
-          const altData = await altRes.json().catch(() => ({}));
-          if (!altRes.ok)
-            throw new Error(`Alternate POST failed: ${JSON.stringify(altData)}`);
+          // New alt -> POST
+          const { res, data } = await fetchJson(
+            withReport(`${API_BASE}/equipment/alternates`),
+            {
+              method: "POST",
+              body: JSON.stringify({
+                reportId,
+                EquipmentId: equipmentId,
+                ...toPayload(alt),
+                IsUsed: alt.used ? 1 : 0,
+              }),
+            }
+          );
+          if (!res.ok) throw new Error(data?.error || "Alternate POST failed");
         }
       }
 
       return true;
     } catch (err) {
-      console.error("❌ Submit error:", err);
       alert("❌ Submit failed: " + (err.message || err));
       return false;
     }
   };
 
-  // ✅ Home button now submits every time, then goes home
-  const handleHomeClick = async () => {
-    if (submitting) return;
+  // ✅ Home button submits, then shows popup of API calls (includes alternates)
+ const handleHomeClick = async () => {
+  if (submitting) return;
 
-    try {
-      setSubmitting(true);
-      const ok = await handleSubmit();
-      if (ok) {
-        alert("✅ Submitted changes!");
-        onBack?.();
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
+  try {
+    setSubmitting(true);
+    const ok = await handleSubmit();
+    if (ok) onBack?.(); // go back immediately
+  } finally {
+    setSubmitting(false);
+  }
+};
   return (
     <div className="container py-4">
       {/* ✅ HOME BUTTON ON TOP */}
@@ -485,37 +502,50 @@ export default function BoxView1({ number, onBack }) {
           {submitting ? "Submitting..." : "Home"}
         </button>
 
-        <div>
+        <div className="text-center">
           <h2 className="mb-0">Code {number}</h2>
           <p className="mb-0 text-muted">Equipment</p>
+          <p className="mb-0 small text-muted">
+            Report:{" "}
+            {reportId ? (
+              <span className="font-monospace">{reportId}</span>
+            ) : (
+              <span className="text-danger">missing reportId</span>
+            )}
+          </p>
         </div>
 
         <div style={{ width: "90px" }} />
       </div>
 
-      {/* form no longer needs onSubmit */}
-      <form>
-        {sections.map((opts, i) => (
-          <Section
-            key={i}
-            idx={i}
-            options={opts}
-            onChange={updateSection}
-            onRemoveSection={sections.length > 1 ? removeSection : undefined}
-          />
-        ))}
+      {loading ? (
+        <div className="alert alert-secondary">Loading…</div>
+      ) : (
+        <form>
+          {sections.map((opts, i) => (
+            <Section
+              key={i}
+              idx={i}
+              options={opts}
+              onChange={updateSection}
+              onRemoveSection={sections.length > 1 ? removeSection : undefined}
+            />
+          ))}
 
-        <div className="d-flex flex-wrap gap-2 mb-4">
-          <button
-            type="button"
-            className="btn btn-outline-primary"
-            onClick={addSection}
-          >
-            + Add Item
-          </button>
-        </div>
-      </form>
+          <div className="d-flex flex-wrap gap-2 mb-4">
+            <button
+              type="button"
+              className="btn btn-outline-primary"
+              onClick={addSection}
+            >
+              + Add Item
+            </button>
+          </div>
+        </form>
+      )}
+
+     
+      
     </div>
   );
 }
-

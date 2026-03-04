@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
-import BoxViewLabor from "./BoxViewLabor"; // ✅ make this editor use /labor endpoints
+import BoxViewLabor from "./BoxViewLabor";
 
-export default function LaborViewer({ onTotalsChange }) {
+export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -14,6 +14,45 @@ export default function LaborViewer({ onTotalsChange }) {
 
   const CODE_NUMBER = "5000";
   const BLUE = "#0b2a4a";
+
+  // -------------------------
+  // reportId helpers (TEMPLATE)
+  // -------------------------
+  const isGuid = useCallback((v) => {
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
+      String(v || "").trim().replace(/[{}]/g, "")
+    );
+  }, []);
+
+  const normalizeGuid = useCallback(
+    (v) => {
+      const s = String(v || "").trim().replace(/[{}]/g, "");
+      return isGuid(s) ? s.toLowerCase() : "";
+    },
+    [isGuid]
+  );
+
+  const reportId = useMemo(() => {
+    const fromProp = normalizeGuid(reportIdProp);
+    if (fromProp) return fromProp;
+
+    const fromGlobal = normalizeGuid(window.__REPORT_ID__);
+    if (fromGlobal) return fromGlobal;
+
+    const fromLS = normalizeGuid(localStorage.getItem("ccms_report_id"));
+    if (fromLS) return fromLS;
+
+    return "";
+  }, [reportIdProp, normalizeGuid]);
+
+  const withReport = useCallback(
+    (url) => {
+      if (!reportId) return url;
+      const hasQ = url.includes("?");
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+    },
+    [reportId]
+  );
 
   const isSub = (t) => String(t || "").trim().toLowerCase() === "subcontractor";
 
@@ -42,9 +81,10 @@ export default function LaborViewer({ onTotalsChange }) {
       setLoading(true);
       setError(null);
 
-      const res = await fetch(
-        `${API_BASE}/labor/code/${encodeURIComponent(CODE_NUMBER)}`
-      );
+      const res = await fetch(withReport(`${API_BASE}/labor/code/5000`), {
+        method: "GET",
+        headers: reportId ? { "x-report-id": reportId } : undefined,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const json = await res.json();
@@ -60,7 +100,7 @@ export default function LaborViewer({ onTotalsChange }) {
     } finally {
       setLoading(false);
     }
-  }, [API_BASE, CODE_NUMBER]);
+  }, [API_BASE, reportId, withReport]);
 
   useEffect(() => {
     fetchRows();
@@ -70,8 +110,13 @@ export default function LaborViewer({ onTotalsChange }) {
     try {
       setDeletingId(laborId);
 
-      const url = `${API_BASE}/labor/${encodeURIComponent(laborId)}`;
-      const res = await fetch(url, { method: "DELETE" });
+      const res = await fetch(
+        withReport(`${API_BASE}/labor/${encodeURIComponent(laborId)}`),
+        {
+          method: "DELETE",
+          headers: reportId ? { "x-report-id": reportId } : undefined,
+        }
+      );
 
       const text = await res.text();
       let data;
@@ -96,7 +141,6 @@ export default function LaborViewer({ onTotalsChange }) {
     }
   };
 
-  // ✅ Totals ONLY (no Totals-by-Type block)
   const totals = useMemo(() => {
     return rows.reduce(
       (acc, r) => {
@@ -108,7 +152,6 @@ export default function LaborViewer({ onTotalsChange }) {
     );
   }, [rows, parseNum]);
 
-  // ✅ Report totals up to Home (deduped) — keep byType out since we removed that UI section
   const lastSentRef = useRef(null);
 
   useEffect(() => {
@@ -147,7 +190,6 @@ export default function LaborViewer({ onTotalsChange }) {
 
   return (
     <div className="container py-4">
-      {/* ✅ Input LEFT + LABOR all caps blue */}
       <div className="d-flex align-items-center gap-3 mb-3">
         <button
           className="btn btn-outline-secondary btn-lg"
@@ -182,24 +224,17 @@ export default function LaborViewer({ onTotalsChange }) {
           >
             <tr>
               <th style={{ width: "4rem", backgroundColor: BLUE }}>#</th>
-
-              {/* ✅ removed Code column */}
               <th style={{ width: "12rem", backgroundColor: BLUE }}>
                 Labor Type
               </th>
-
               <th style={{ width: "14rem", backgroundColor: BLUE }}>
                 Subcontractor Name
               </th>
-
               <th style={{ width: "7rem", backgroundColor: BLUE }}>Hours</th>
               <th style={{ width: "9rem", backgroundColor: BLUE }}>
                 Labor Cost
               </th>
-
-              {/* Notes flex */}
               <th style={{ backgroundColor: BLUE }}>Notes</th>
-
               <th style={{ width: "7rem", backgroundColor: BLUE }}>Actions</th>
             </tr>
           </thead>
@@ -215,9 +250,13 @@ export default function LaborViewer({ onTotalsChange }) {
                   {isSub(r.LaborType) ? (r.LaborName || "") : ""}
                 </td>
 
-                <td style={{ whiteSpace: "nowrap" }}>{fmtHours(r.LaborHours)}</td>
+                <td style={{ whiteSpace: "nowrap" }}>
+                  {fmtHours(r.LaborHours)}
+                </td>
 
-                <td style={{ whiteSpace: "nowrap" }}>{fmtMoney(r.LaborCost)}</td>
+                <td style={{ whiteSpace: "nowrap" }}>
+                  {fmtMoney(r.LaborCost)}
+                </td>
 
                 <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
                   {r.Notes}
@@ -228,7 +267,6 @@ export default function LaborViewer({ onTotalsChange }) {
                     className="btn btn-sm btn-outline-danger"
                     onClick={() => handleDelete(r.LaborId)}
                     disabled={deletingId === r.LaborId}
-                    title="Delete this labor item"
                   >
                     {deletingId === r.LaborId ? "Deleting…" : "Clear"}
                   </button>
@@ -252,12 +290,9 @@ export default function LaborViewer({ onTotalsChange }) {
         </table>
       </div>
 
-      {/* ✅ removed the "Code Number 5000" display */}
-
       <style>{`
         .table-fixed { table-layout: fixed; width: 100%; }
       `}</style>
     </div>
   );
 }
-

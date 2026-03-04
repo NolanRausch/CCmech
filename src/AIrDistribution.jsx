@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxView4 from "./BoxView4"; // ✅ editor/viewer screen for AirDistribution
 
-export default function DbTestViewer({ onTotalsChange }) {
+export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp }) {
   const [rows, setRows] = useState([]); // each row gets .Alternates: []
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -13,6 +13,46 @@ export default function DbTestViewer({ onTotalsChange }) {
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
   const BLUE = "#0b2a4a";
+
+  // -------------------------
+  // reportId helpers (TEMPLATE)
+  // -------------------------
+  const isGuid = useCallback((v) => {
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
+      String(v || "").trim().replace(/[{}]/g, "")
+    );
+  }, []);
+
+  const normalizeGuid = useCallback(
+    (v) => {
+      const s = String(v || "").trim().replace(/[{}]/g, "");
+      return isGuid(s) ? s.toLowerCase() : "";
+    },
+    [isGuid]
+  );
+
+  // ✅ reportId for endpoints ONLY (prop > global > localStorage)
+  const reportId = useMemo(() => {
+    const fromProp = normalizeGuid(reportIdProp);
+    if (fromProp) return fromProp;
+
+    const fromGlobal = normalizeGuid(window.__REPORT_ID__);
+    if (fromGlobal) return fromGlobal;
+
+    const fromLS = normalizeGuid(localStorage.getItem("ccms_report_id"));
+    if (fromLS) return fromLS;
+
+    return "";
+  }, [reportIdProp, normalizeGuid]);
+
+  const withReport = useCallback(
+    (url) => {
+      if (!reportId) return url;
+      const hasQ = url.includes("?");
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+    },
+    [reportId]
+  );
 
   const parseCost = useCallback((val) => {
     const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
@@ -26,14 +66,20 @@ export default function DbTestViewer({ onTotalsChange }) {
     return usedAlt || primary;
   }, []);
 
-  // ✅ AirDistribution alternates
+  // ✅ AirDistribution alternates (report-scoped)
   const fetchAlternates = useCallback(
     async (airDistributionId) => {
       try {
         const res = await fetch(
-          `${API_BASE}/airdistribution/alternates/${encodeURIComponent(
-            airDistributionId
-          )}`
+          withReport(
+            `${API_BASE}/airdistribution/alternates/${encodeURIComponent(
+              airDistributionId
+            )}`
+          ),
+          {
+            method: "GET",
+            headers: reportId ? { "x-report-id": reportId } : undefined,
+          }
         );
         if (!res.ok) throw new Error(`Alt HTTP ${res.status}`);
 
@@ -50,7 +96,7 @@ export default function DbTestViewer({ onTotalsChange }) {
         return [];
       }
     },
-    [API_BASE]
+    [API_BASE, reportId, withReport]
   );
 
   const fetchRows = useCallback(async () => {
@@ -58,8 +104,11 @@ export default function DbTestViewer({ onTotalsChange }) {
       setLoading(true);
       setError(null);
 
-      // ✅ AirDistribution primary rows
-      const res = await fetch(`${API_BASE}/airdistribution`);
+      // ✅ AirDistribution primary rows (report-scoped)
+      const res = await fetch(withReport(`${API_BASE}/airdistribution`), {
+        method: "GET",
+        headers: reportId ? { "x-report-id": reportId } : undefined,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const json = await res.json();
@@ -83,21 +132,24 @@ export default function DbTestViewer({ onTotalsChange }) {
     } finally {
       setLoading(false);
     }
-  }, [API_BASE, fetchAlternates]);
+  }, [API_BASE, fetchAlternates, reportId, withReport]);
 
   useEffect(() => {
     fetchRows();
   }, [fetchRows]);
 
-  // ✅ DELETE /api/airdistribution/{id}
+  // ✅ DELETE /api/airdistribution/{id} (report-scoped)
   const handleDelete = async (airDistributionId) => {
     try {
       setDeletingId(airDistributionId);
 
-      const url = `${API_BASE}/airdistribution/${encodeURIComponent(
-        airDistributionId
-      )}`;
-      const res = await fetch(url, { method: "DELETE" });
+      const url = withReport(
+        `${API_BASE}/airdistribution/${encodeURIComponent(airDistributionId)}`
+      );
+      const res = await fetch(url, {
+        method: "DELETE",
+        headers: reportId ? { "x-report-id": reportId } : undefined,
+      });
 
       const text = await res.text();
       let data;
@@ -221,10 +273,7 @@ export default function DbTestViewer({ onTotalsChange }) {
               <th style={{ ...col.desc, backgroundColor: BLUE }}>Description</th>
               <th style={{ ...col.supplier, backgroundColor: BLUE }}>Supplier</th>
               <th style={{ ...col.cost, backgroundColor: BLUE }}>Cost</th>
-
-              {/* ✅ Notes flexible */}
               <th style={{ backgroundColor: BLUE }}>Notes</th>
-
               <th style={{ ...col.alternates, backgroundColor: BLUE }}>
                 Alternates
               </th>
@@ -232,7 +281,6 @@ export default function DbTestViewer({ onTotalsChange }) {
             </tr>
           </thead>
 
-          {/* ✅ No "No records found" row; table can be empty */}
           <tbody>
             {rows.map((r, i) => {
               const hasUsedAlt = r?.Alternates?.some(
@@ -241,9 +289,7 @@ export default function DbTestViewer({ onTotalsChange }) {
               const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
 
               return (
-                <React.Fragment
-                  key={r.AirDistributionId || `rowwrap-${i}`}
-                >
+                <React.Fragment key={r.AirDistributionId || `rowwrap-${i}`}>
                   <tr>
                     <td style={col.idx}>
                       {i + 1}
@@ -322,12 +368,7 @@ export default function DbTestViewer({ onTotalsChange }) {
 
                           <td style={col.cost}>{fmtMoney(a.Cost)}</td>
 
-                          <td
-                            style={{
-                              whiteSpace: "normal",
-                              wordBreak: "break-word",
-                            }}
-                          >
+                          <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
                             {a.Notes}
                           </td>
 
@@ -347,10 +388,7 @@ export default function DbTestViewer({ onTotalsChange }) {
             })}
           </tbody>
 
-          <tfoot
-            className="table-secondary"
-            style={{ position: "sticky", bottom: 0 }}
-          >
+          <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
             <tr>
               <th colSpan={3}>Total Cost (alt-adjusted)</th>
               <th style={col.cost}>{fmtMoney(totalCost)}</th>
