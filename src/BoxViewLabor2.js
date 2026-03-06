@@ -31,6 +31,7 @@ export default function BoxViewLabor({
   codeNumber = "2000",
   onBack,
   reportId: reportIdProp,
+  onTotalsChange, // ✅ NEW: allow Home totals page to receive totals + byType
 }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -98,18 +99,21 @@ export default function BoxViewLabor({
   const fmtHours = useCallback((n) => parseNum(n).toFixed(2), [parseNum]);
 
   const isHourlyType = useCallback(
-    (t) => Object.prototype.hasOwnProperty.call(HOURLY_RATES, String(t || "")),
+    (t) => Object.prototype.hasOwnProperty.call(HOURLY_RATES, String(t || "").trim()),
     []
   );
 
   const isManualCostType = useCallback(
-    (t) => String(t) === "Subcontractor" || String(t) === "Engineering",
+    (t) => {
+      const tt = String(t || "").trim();
+      return tt === "Subcontractor" || tt === "Engineering";
+    },
     []
   );
 
   const computeCostForRow = useCallback(
     (r) => {
-      const t = String(r?.laborType ?? "");
+      const t = String(r?.laborType ?? "").trim();
       if (!isHourlyType(t)) return r?.laborCost ?? "";
       const rate = HOURLY_RATES[t];
       const hours = parseNum(r?.laborHours);
@@ -120,7 +124,7 @@ export default function BoxViewLabor({
 
   const normalizeRowAfterTypeChange = useCallback(
     (r, nextType) => {
-      const t = String(nextType || "");
+      const t = String(nextType || "").trim();
 
       // Manual-cost types: hours should display as NA and payload hours should be null
       if (isManualCostType(t)) {
@@ -167,7 +171,7 @@ export default function BoxViewLabor({
         : [];
 
       const mapped = list.map((r) => {
-        const laborType = String(r.LaborType ?? "");
+        const laborType = String(r.LaborType ?? "").trim();
         const base = {
           laborId: r.LaborId,
           codeNumber: r.CodeNumber ?? String(codeNumber ?? ""),
@@ -200,7 +204,6 @@ export default function BoxViewLabor({
       setLoading(false);
     }
   }, [
-    API_BASE,
     blank,
     codeNumber,
     computeCostForRow,
@@ -211,7 +214,7 @@ export default function BoxViewLabor({
     withReport,
   ]);
 
-  // ✅ IMPORTANT: reload when reportId changes (this is why code1000 updates but code2000 didn't)
+  // ✅ reload when reportId changes
   useEffect(() => {
     load();
   }, [load]);
@@ -221,7 +224,7 @@ export default function BoxViewLabor({
       prev.map((r, i) => {
         if (i !== idx) return r;
         const next = { ...r, ...patch };
-        const t = String(next.laborType ?? "");
+        const t = String(next.laborType ?? "").trim();
 
         // Hours changed on hourly types => recompute cost
         if ("laborHours" in patch && isHourlyType(t)) next.laborCost = computeCostForRow(next);
@@ -255,7 +258,7 @@ export default function BoxViewLabor({
 
   const isEmpty = useCallback(
     (r) => {
-      const t = String(r?.laborType ?? "");
+      const t = String(r?.laborType ?? "").trim();
       const hasType = LABOR_TYPES.includes(t);
 
       if (!hasType) return !(r?.notes && r.notes.trim());
@@ -277,7 +280,7 @@ export default function BoxViewLabor({
 
   const toPayload = useCallback(
     (r) => {
-      const laborType = r?.laborType ? String(r.laborType) : null;
+      const laborType = r?.laborType ? String(r.laborType).trim() : null;
       const t = String(laborType ?? "");
 
       let laborHours =
@@ -309,7 +312,7 @@ export default function BoxViewLabor({
     return rows.reduce(
       (acc, r) => {
         if (isEmpty(r)) return acc;
-        const t = String(r?.laborType ?? "");
+        const t = String(r?.laborType ?? "").trim();
 
         if (isHourlyType(t)) {
           if (r.laborHours !== "NA") acc.hours += parseNum(r.laborHours);
@@ -323,6 +326,44 @@ export default function BoxViewLabor({
     );
   }, [rows, computeCostForRow, isEmpty, isHourlyType, isManualCostType, parseNum]);
 
+  // ✅ NEW: totals grouped by labor type
+  const totalsByType = useMemo(() => {
+    const map = new Map();
+
+    for (const r of rows) {
+      if (!r || isEmpty(r)) continue;
+
+      const t = String(r?.laborType ?? "").trim() || "Unspecified";
+
+      let hours = 0;
+      let cost = 0;
+
+      if (isHourlyType(t)) {
+        if (r.laborHours !== "NA") hours = parseNum(r.laborHours);
+        cost = parseNum(computeCostForRow(r));
+      } else if (isManualCostType(t)) {
+        hours = 0;
+        cost = parseNum(r.laborCost);
+      } else {
+        continue;
+      }
+
+      const prev = map.get(t) || { type: t, cost: 0, hours: 0 };
+      prev.cost += cost;
+      prev.hours += hours;
+      map.set(t, prev);
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.cost - a.cost);
+  }, [rows, computeCostForRow, isEmpty, isHourlyType, isManualCostType, parseNum]);
+
+  // ✅ NEW: publish totals to parent (Home.js) if provided
+  useEffect(() => {
+    if (typeof onTotalsChange !== "function") return;
+    onTotalsChange({ cost: totals.cost, hours: totals.hours, byType: totalsByType });
+  }, [onTotalsChange, totals.cost, totals.hours, totalsByType]);
+
+  // ✅ Submit changes (called by form submit)
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -423,7 +464,7 @@ export default function BoxViewLabor({
 
             <tbody>
               {rows.map((r, i) => {
-                const t = String(r?.laborType ?? "");
+                const t = String(r?.laborType ?? "").trim();
                 const hourly = isHourlyType(t);
                 const manual = isManualCostType(t);
 

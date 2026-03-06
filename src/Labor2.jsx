@@ -150,6 +150,24 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
     );
   }, [rows, parseNum]);
 
+  // ✅ NEW: group totals by LaborType so Home can show "Mech", "Service", etc.
+  const totalsByType = useMemo(() => {
+    const map = new Map();
+
+    for (const r of rows) {
+      const type = String(r?.LaborType ?? "").trim() || "Unspecified";
+      const hours = parseNum(r?.LaborHours);
+      const cost = parseNum(r?.LaborCost);
+
+      const prev = map.get(type) || { type, hours: 0, cost: 0 };
+      prev.hours += hours;
+      prev.cost += cost;
+      map.set(type, prev);
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.cost - a.cost);
+  }, [rows, parseNum]);
+
   const lastSentRef = useRef(null);
 
   useEffect(() => {
@@ -158,18 +176,19 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
     const payload = {
       cost: Number(totals.laborCost) || 0,
       hours: Number(totals.laborHours) || 0,
+      byType: totalsByType, // ✅ NEW
       label: "Labor",
     };
 
     const sig = `${payload.label}:${payload.cost.toFixed(
       4
-    )}:${payload.hours.toFixed(4)}`;
+    )}:${payload.hours.toFixed(4)}:${JSON.stringify(payload.byType)}`;
 
     if (lastSentRef.current === sig) return;
     lastSentRef.current = sig;
 
     onTotalsChange(payload);
-  }, [totals.laborCost, totals.laborHours, onTotalsChange]);
+  }, [totals.laborCost, totals.laborHours, totalsByType, onTotalsChange]);
 
   if (loading) return <p className="p-3">Loading...</p>;
   if (error) return <p className="p-3 text-danger">Error: {error}</p>;

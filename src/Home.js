@@ -301,19 +301,181 @@ function Home() {
     [grandTotalWithTax, addersTotal]
   );
 
-  const margin25 = useMemo(
-    () => nonLaborWithAdders * (1 / (1 - 0.25)),
-    [nonLaborWithAdders]
-  );
-  const margin30 = useMemo(
-    () => nonLaborWithAdders * (1 / (1 - 0.3)),
-    [nonLaborWithAdders]
-  );
-  const margin35 = useMemo(
-    () => nonLaborWithAdders * (1 / (1 - 0.35)),
-    [nonLaborWithAdders]
+  const margin25 = useMemo(() => combinedWithAdders / (1 - 0.25), [combinedWithAdders]);
+  const margin30 = useMemo(() => combinedWithAdders / (1 - 0.3), [combinedWithAdders]);
+  const margin35 = useMemo(() => combinedWithAdders / (1 - 0.35), [combinedWithAdders]);
+
+  // ============================================================
+  // ✅ HOME REPORTS CRUD (MUST be ABOVE any conditional return)
+  // ============================================================
+  const REPORTS_API =
+    "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/reports";
+
+  const [reports, setReports] = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsError, setReportsError] = useState("");
+
+  const blankReport = useMemo(
+    () => ({
+      ReportId: "",
+      ReportName: "",
+      CustomerName: "",
+      Address: "",
+      Status: 0,
+      Date: "", // yyyy-mm-dd
+      ProjectNumber: "", // read-only-ish; backend can generate
+    }),
+    []
   );
 
+  const [reportDraft, setReportDraft] = useState(blankReport);
+  const [editingId, setEditingId] = useState("");
+
+  const loadReports = useCallback(async () => {
+    setReportsLoading(true);
+    setReportsError("");
+    try {
+      const res = await fetch(REPORTS_API);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.recordset)
+        ? data.recordset
+        : [];
+      setReports(list);
+    } catch (e) {
+      console.error("❌ loadReports:", e);
+      setReports([]);
+      setReportsError(e.message || String(e));
+    } finally {
+      setReportsLoading(false);
+    }
+  }, [REPORTS_API]);
+
+  useEffect(() => {
+    if (showHomeScreen) loadReports();
+  }, [showHomeScreen, loadReports]);
+
+  const startNewReport = useCallback(() => {
+    setEditingId("");
+    setReportDraft(blankReport);
+  }, [blankReport]);
+
+  const startEditReport = useCallback(
+    (r) => {
+      const id = String(r?.ReportId || r?.reportId || r?.id || "").trim();
+      setEditingId(id);
+
+      const isoDate = (() => {
+        const v = r?.Date ?? r?.date ?? "";
+        if (!v) return "";
+        // if already yyyy-mm-dd
+        if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return String(v);
+        const d = new window.Date(v);
+        if (Number.isNaN(d.getTime())) return "";
+        return d.toISOString().slice(0, 10);
+      })();
+
+      setReportDraft({
+        ReportId: id,
+        ReportName: r?.ReportName ?? "",
+        CustomerName: r?.CustomerName ?? "",
+        Address: r?.Address ?? "",
+        Status: Number(r?.Status ?? 0) || 0,
+        Date: isoDate,
+        ProjectNumber: r?.ProjectNumber ?? "",
+      });
+    },
+    []
+  );
+
+  const saveReport = useCallback(async () => {
+    setReportsError("");
+    try {
+      const isEdit = !!editingId;
+
+      if (!String(reportDraft.ReportName || "").trim()) {
+        alert("ReportName is required.");
+        return;
+      }
+
+      const payload = {
+        ReportName: String(reportDraft.ReportName ?? ""),
+        CustomerName: String(reportDraft.CustomerName ?? ""),
+        Address: String(reportDraft.Address ?? ""),
+        Status: Number(reportDraft.Status ?? 0) || 0,
+        Date: reportDraft.Date ? String(reportDraft.Date) : null,
+        // Let backend generate ProjectNumber if blank
+        ProjectNumber:
+          reportDraft.ProjectNumber === "" || reportDraft.ProjectNumber == null
+            ? null
+            : Number(reportDraft.ProjectNumber),
+      };
+
+      const url = isEdit
+        ? `${REPORTS_API}/${encodeURIComponent(editingId)}`
+        : REPORTS_API;
+      const method = isEdit ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      await loadReports();
+      startNewReport();
+      alert("✅ Report saved");
+    } catch (e) {
+      console.error("❌ saveReport:", e);
+      alert("❌ Save failed: " + (e.message || e));
+    }
+  }, [REPORTS_API, editingId, reportDraft, loadReports, startNewReport]);
+
+  const deleteReport = useCallback(
+    async (id) => {
+      const rid = String(id || "").trim();
+      if (!rid) return;
+
+      if (!window.confirm("Delete this report?")) return;
+
+      try {
+        const res = await fetch(`${REPORTS_API}/${encodeURIComponent(rid)}`, {
+          method: "DELETE",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+        await loadReports();
+        if (editingId === rid) startNewReport();
+      } catch (e) {
+        console.error("❌ deleteReport:", e);
+        alert("❌ Delete failed: " + (e.message || e));
+      }
+    },
+    [REPORTS_API, loadReports, editingId, startNewReport]
+  );
+
+  const openReportFromRow = useCallback(
+    (rid) => {
+      const norm = normalizeGuid(rid);
+      if (!norm) {
+        alert("This report row is missing a valid ReportId (GUID).");
+        return;
+      }
+      setReportId(norm);
+      setReportIdDraft(norm);
+      setShowHomeScreen(false);
+    },
+    [normalizeGuid]
+  );
+
+  // ✅ KEEP: selected page routing
   if (selected === 1000) {
     return (
       <BoxView1
@@ -330,7 +492,11 @@ function Home() {
       alert("Set a Report ID first.");
       return;
     }
-    if (!window.confirm("Are you sure you want to delete ALL equipment for this report?"))
+    if (
+      !window.confirm(
+        "Are you sure you want to delete ALL equipment for this report?"
+      )
+    )
       return;
 
     try {
@@ -342,7 +508,10 @@ function Home() {
       );
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `Failed to clear table (HTTP ${res.status})`);
+      if (!res.ok)
+        throw new Error(
+          data.error || `Failed to clear table (HTTP ${res.status})`
+        );
 
       console.log("✅ Cleared:", data);
       alert("✅ All equipment deleted for this report");
@@ -356,7 +525,13 @@ function Home() {
   const TotalsOnly = () => {
     const COLS = "360px 120px 180px"; // label | hours | total (consistent widths)
 
-    const Row = ({ label, hours = "", total = "", strong = false, muted = false }) => (
+    const Row = ({
+      label,
+      hours = "",
+      total = "",
+      strong = false,
+      muted = false,
+    }) => (
       <div
         style={{
           display: "grid",
@@ -396,10 +571,34 @@ function Home() {
     );
 
     const SectionTitle = ({ children }) => (
-      <div style={{ marginTop: 12, marginBottom: 6, fontSize: 12, fontWeight: 800 }}>
+      <div
+        style={{ marginTop: 12, marginBottom: 6, fontSize: 12, fontWeight: 800 }}
+      >
         {children}
       </div>
     );
+
+    // ✅ NEW: fallback rows by section if byType is empty
+    const laborSectionRows = useMemo(() => {
+      const order = [
+        ["labor1", "Labor 1"],
+        ["labor2", "Labor 2"],
+        ["labor3", "Labor 3"],
+        ["labor4", "Labor 4"],
+        ["labor5", "Labor 5"],
+        ["labor6", "Labor 6"],
+        ["labor7", "Labor 7"],
+      ];
+
+      return order
+        .map(([key, label]) => {
+          const v = laborSections[key] || {};
+          const cost = Number(v.cost) || 0;
+          const hours = Number(v.hours) || 0;
+          return { key, label, cost, hours };
+        })
+        .filter((x) => x.cost !== 0 || x.hours !== 0);
+    }, [laborSections]);
 
     return (
       <div style={{ width: "100%", display: "block", textAlign: "left" }}>
@@ -445,7 +644,9 @@ function Home() {
             value={Number((taxRate * 100).toFixed(2))}
             onChange={(e) => {
               const pctNum = Number(e.target.value);
-              const next = Number.isFinite(pctNum) ? Math.max(0, pctNum) / 100 : 0;
+              const next = Number.isFinite(pctNum)
+                ? Math.max(0, pctNum) / 100
+                : 0;
               setTaxRate(next);
             }}
             style={{ width: 90 }}
@@ -476,7 +677,12 @@ function Home() {
           <SectionTitle>Non-Labor</SectionTitle>
 
           {Object.entries(totalsBySection).map(([k, v]) => (
-            <Row key={k} label={labelForSection(k)} hours={pct(taxRate)} total={money(withTax(v))} />
+            <Row
+              key={k}
+              label={labelForSection(k)}
+              hours={pct(taxRate)}
+              total={money(withTax(v))}
+            />
           ))}
 
           <Row
@@ -489,9 +695,7 @@ function Home() {
           {/* ===== Labor ===== */}
           <SectionTitle>Labor (Grouped by Type)</SectionTitle>
 
-          {laborByType.length === 0 ? (
-            <Row label="No labor totals yet." hours="" total="" muted />
-          ) : (
+          {laborByType.length > 0 ? (
             laborByType.map((t) => (
               <Row
                 key={t.type}
@@ -500,6 +704,17 @@ function Home() {
                 total={money(withTax(t.cost))}
               />
             ))
+          ) : laborSectionRows.length > 0 ? (
+            laborSectionRows.map((x) => (
+              <Row
+                key={x.key}
+                label={x.label}
+                hours={x.hours ? `${x.hours.toFixed(2)} hrs` : ""}
+                total={money(withTax(x.cost))}
+              />
+            ))
+          ) : (
+            <Row label="No labor totals yet." hours="" total="" muted />
           )}
 
           <Row
@@ -512,10 +727,22 @@ function Home() {
           {/* ===== Adders ===== */}
           <SectionTitle>Adders</SectionTitle>
 
-          <Row label="Contingency" hours={pct(contingencyRate)} total={money(contingency)} />
-          <Row label="Per Diem" hours={`${laborHoursTotal.toFixed(2)} hrs`} total={money(perDiem)} />
+          <Row
+            label="Contingency"
+            hours={pct(contingencyRate)}
+            total={money(contingency)}
+          />
+          <Row
+            label="Per Diem"
+            hours={`${laborHoursTotal.toFixed(2)} hrs`}
+            total={money(perDiem)}
+          />
           <Row label="Warranty" hours={pct(warrantyRate)} total={money(warranty)} />
-          <Row label="Consumables" hours={pct(consumablesRate)} total={money(consumables)} />
+          <Row
+            label="Consumables"
+            hours={pct(consumablesRate)}
+            total={money(consumables)}
+          />
 
           <Row label="Adders Total" hours="" total={money(addersTotal)} strong />
           <Row
@@ -549,7 +776,6 @@ function Home() {
     <div className="card mb-3">
       <div className="card-body d-flex justify-content-between align-items-center">
         <div>
-          
           <div style={{ fontSize: 12, opacity: 0.75 }}>
             Report ID:{" "}
             <span style={{ fontFamily: "monospace" }}>
@@ -567,55 +793,195 @@ function Home() {
           View Totals
         </button>
       </div>
-
-      {/* ✅ Report ID control */}
-   
+      {/* ✅ Report ID control (left intentionally unchanged/blank in your version) */}
     </div>
   );
 
-  // ✅ NEW: Home screen (ONLY CHANGE: replace Open Report with 6 buttons)
+  // ✅ HOME SCREEN: Reports CRUD (hooks are already above; safe)
   if (showHomeScreen) {
-    // 🔧 Put your real 6 ReportIds here
-    const REPORT_BUTTONS = [
-      { label: "Report 1", reportId: DEFAULT_REPORT_ID },
-      { label: "Report 2", reportId: "" },
-      { label: "Report 3", reportId: "" },
-      { label: "Report 4", reportId: "" },
-      { label: "Report 5", reportId: "" },
-      { label: "Report 6", reportId: "" },
-    ];
-
-    const openReport = (rid) => {
-      const norm = normalizeGuid(rid);
-      if (!norm) {
-        alert("This button is missing a valid Report ID.");
-        return;
-      }
-
-      // ✅ same behavior as Save button, but automatic
-      setReportId(norm);
-      setReportIdDraft(norm);
-
-      // ✅ then go to the next page
-      setShowHomeScreen(false);
-    };
-
     return (
       <div className="home-container">
         <h1 className="text-center">Capital City</h1>
 
         <div className="card mt-3">
-          <div className="card-body text-center">
-            <div className="d-grid gap-2" style={{ maxWidth: 420, margin: "0 auto" }}>
-              {REPORT_BUTTONS.map((b, i) => (
-                <button
-                  key={i}
-                  className="btn btn-primary btn-lg"
-                  onClick={() => openReport(b.reportId)}
-                >
-                  {b.label}
+          <div className="card-body">
+            <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <h5 className="mb-0">Reports</h5>
+
+              <div className="d-flex gap-2">
+                <button className="btn btn-outline-secondary btn-sm" onClick={loadReports}>
+                  Refresh
                 </button>
-              ))}
+                <button className="btn btn-primary btn-sm" onClick={startNewReport}>
+                  + New
+                </button>
+              </div>
+            </div>
+
+            {reportsError && (
+              <div className="alert alert-danger mt-3 mb-0">{reportsError}</div>
+            )}
+
+            {/* Editor */}
+            <div className="mt-3">
+              <div className="row g-2">
+                <div className="col-md-4">
+                  <label className="form-label small mb-1">Report Name</label>
+                  <input
+                    className="form-control"
+                    value={reportDraft.ReportName}
+                    onChange={(e) =>
+                      setReportDraft((p) => ({ ...p, ReportName: e.target.value }))
+                    }
+                    placeholder="e.g., Bid - Norcross"
+                  />
+                </div>
+
+                <div className="col-md-3">
+                  <label className="form-label small mb-1">Customer Name</label>
+                  <input
+                    className="form-control"
+                    value={reportDraft.CustomerName}
+                    onChange={(e) =>
+                      setReportDraft((p) => ({ ...p, CustomerName: e.target.value }))
+                    }
+                    placeholder="Customer"
+                  />
+                </div>
+
+                <div className="col-md-5">
+                  <label className="form-label small mb-1">Address</label>
+                  <input
+                    className="form-control"
+                    value={reportDraft.Address}
+                    onChange={(e) =>
+                      setReportDraft((p) => ({ ...p, Address: e.target.value }))
+                    }
+                    placeholder="Address"
+                  />
+                </div>
+
+                <div className="col-md-2">
+                  <label className="form-label small mb-1">Status</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    value={reportDraft.Status}
+                    onChange={(e) =>
+                      setReportDraft((p) => ({
+                        ...p,
+                        Status: Number(e.target.value) || 0,
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="col-md-3">
+                  <label className="form-label small mb-1">Date</label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={reportDraft.Date}
+                    onChange={(e) =>
+                      setReportDraft((p) => ({ ...p, Date: e.target.value }))
+                    }
+                  />
+                </div>
+
+                <div className="col-md-3">
+                  <label className="form-label small mb-1">Project # (4-digit)</label>
+                  <input
+                    className="form-control"
+                    value={reportDraft.ProjectNumber}
+                    onChange={(e) =>
+                      setReportDraft((p) => ({ ...p, ProjectNumber: e.target.value }))
+                    }
+                    placeholder="auto"
+                  />
+                </div>
+
+                <div className="col-md-4 d-flex align-items-end gap-2">
+                  <button className="btn btn-success" onClick={saveReport}>
+                    {editingId ? "Save Changes" : "Create Report"}
+                  </button>
+                  <button className="btn btn-outline-secondary" onClick={startNewReport}>
+                    Clear
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* List */}
+            <div className="mt-4">
+              {reportsLoading ? (
+                <div className="text-muted">Loading reports…</div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="table table-sm table-striped align-middle">
+                    <thead>
+                      <tr>
+                        <th>Report Name</th>
+                        <th>Customer</th>
+                        <th>Project #</th>
+                        <th>Status</th>
+                        <th>Date</th>
+                        <th style={{ width: 260 }} className="text-end">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reports.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="text-muted">
+                            No reports found.
+                          </td>
+                        </tr>
+                      ) : (
+                        reports.map((r) => {
+                          const rid = String(r?.ReportId || r?.reportId || r?.id || "");
+                          return (
+                            <tr key={rid || Math.random()}>
+                              <td>{r?.ReportName ?? ""}</td>
+                              <td>{r?.CustomerName ?? ""}</td>
+                              <td>{r?.ProjectNumber ?? ""}</td>
+                              <td>{r?.Status ?? ""}</td>
+                              <td>{String(r?.Date ?? "").slice(0, 10)}</td>
+                              <td className="text-end">
+                                <div className="btn-group">
+                                  <button
+                                    className="btn btn-sm btn-primary"
+                                    onClick={() => openReportFromRow(rid)}
+                                    title="Set ReportId and open inputs"
+                                  >
+                                    Open
+                                  </button>
+                                  <button
+                                    className="btn btn-sm btn-outline-secondary"
+                                    onClick={() => startEditReport(r)}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    className="btn btn-sm btn-outline-danger"
+                                    onClick={() => deleteReport(rid)}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-2 text-muted" style={{ fontSize: 12 }}>
+              Tip: “Open” sets the app’s ReportId (GUID) and takes you into the main inputs page.
             </div>
           </div>
         </div>
@@ -623,6 +989,7 @@ function Home() {
     );
   }
 
+  // ✅ Main app (unchanged)
   return (
     <div className="home-container">
       <h1>Capital City</h1>
@@ -648,7 +1015,7 @@ function Home() {
 
           {/* Labor sections */}
           <div>
-            <Labor reportId={reportId} onTotalsChange={(t) => setLaborSection("labor1", readCost(t))} />
+            <Labor reportId={reportId} onTotalsChange={(t) => setLaborSection("labor1", t)} />
           </div>
 
           <div>
@@ -656,7 +1023,7 @@ function Home() {
           </div>
 
           <div>
-            <Labor2 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor2", readCost(t))} />
+            <Labor2 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor2", t)} />
           </div>
 
           <div>
@@ -672,7 +1039,7 @@ function Home() {
           </div>
 
           <div>
-            <Labor4 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor4", readCost(t))} />
+            <Labor4 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor4", t)} />
           </div>
 
           <div>
