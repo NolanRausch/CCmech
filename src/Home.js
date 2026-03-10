@@ -23,14 +23,13 @@ import Labor6 from "./Labor6";
 import Labor7 from "./Labor7";
 
 function Home() {
-  // ✅ NEW: simple home screen toggle (smallest change)
+  // ✅ simple home screen toggle
   const [showHomeScreen, setShowHomeScreen] = useState(true);
 
   // ✅ Editable tax rate (default 7%)
   const [taxRate, setTaxRate] = useState(0.07);
 
-  // ✅ DEFAULT GUID (put a real one here if you want a fixed default)
-  // Best practice: set this to a "Test Report" row you inserted in dbo.Reports.
+  // ✅ DEFAULT GUID
   const DEFAULT_REPORT_ID = "82e93dd1-7891-4f78-b06d-c5ba14c93c9d";
 
   // ✅ Report Id (persisted)
@@ -68,7 +67,7 @@ function Home() {
     labor7: { cost: 0, hours: 0, byType: [] },
   });
 
-  // ✅ ReportId helpers (strict GUID v4-ish pattern not required; just standard GUID format)
+  // ✅ ReportId helpers
   const isGuid = useCallback((s) => {
     return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
       String(s || "").trim().replace(/[{}]/g, "")
@@ -83,12 +82,10 @@ function Home() {
     [isGuid]
   );
 
-  // ✅ load persisted reportId on first render (fallback to DEFAULT_REPORT_ID)
+  // ✅ load persisted reportId on first render
   useEffect(() => {
     const saved = localStorage.getItem("ccms_report_id") || "";
     const normSaved = normalizeGuid(saved);
-
-    // Use saved if valid; else use default if valid; else blank
     const normDefault = normalizeGuid(DEFAULT_REPORT_ID);
     const initial = normSaved || normDefault || "";
 
@@ -96,7 +93,7 @@ function Home() {
     setReportIdDraft(initial);
   }, [normalizeGuid]);
 
-  // ✅ expose globally so every component/fetch can read it easily
+  // ✅ expose globally
   useEffect(() => {
     if (reportId) localStorage.setItem("ccms_report_id", reportId);
     else localStorage.removeItem("ccms_report_id");
@@ -113,18 +110,17 @@ function Home() {
   }, [reportIdDraft, normalizeGuid]);
 
   const clearReportId = useCallback(() => {
-    // Clear means go back to default (if valid), otherwise blank
     const normDefault = normalizeGuid(DEFAULT_REPORT_ID);
     setReportId(normDefault || "");
     setReportIdDraft(normDefault || "");
   }, [normalizeGuid]);
 
-  // ✅ FIX #1: make section setter idempotent (prevents render loops)
+  // ✅ make section setter idempotent
   const setSectionCost = useCallback((key, cost) => {
     const next = Number(cost) || 0;
 
     setTotalsBySection((prev) => {
-      if ((prev[key] ?? 0) === next) return prev; // ✅ no-op if unchanged
+      if ((prev[key] ?? 0) === next) return prev;
       return { ...prev, [key]: next };
     });
   }, []);
@@ -157,7 +153,7 @@ function Home() {
     return { cost: 0, hours: 0, byType: [] };
   }, []);
 
-  // ✅ FIX #2: make labor setter idempotent (prevents render loops)
+  // ✅ make labor setter idempotent
   const setLaborSection = useCallback(
     (key, payload) => {
       const parsed = readLaborPayload(payload);
@@ -171,7 +167,7 @@ function Home() {
           JSON.stringify(curr?.byType ?? []) ===
             JSON.stringify(parsed.byType ?? []);
 
-        if (same) return prev; // ✅ no-op if unchanged
+        if (same) return prev;
 
         return { ...prev, [key]: parsed };
       });
@@ -179,7 +175,7 @@ function Home() {
     [readLaborPayload]
   );
 
-  // ✅ Better money formatting ($30,000.00)
+  // ✅ Better money formatting
   const money = useCallback((val) => {
     const n = Number(String(val ?? "").replace(/[^0-9.\-]/g, ""));
     const safe = isNaN(n) ? 0 : n;
@@ -259,7 +255,7 @@ function Home() {
   );
   const laborGrandTotalWithTax = laborSubTotalWithTax;
 
-  // ✅ Combined totals (used for combinedWithAdders only)
+  // ✅ Combined totals
   const combinedGrandTotalWithTax = useMemo(
     () => grandTotalWithTax + laborGrandTotalWithTax,
     [grandTotalWithTax, laborGrandTotalWithTax]
@@ -282,7 +278,10 @@ function Home() {
     [laborHoursTotal]
   );
 
-  const warranty = useMemo(() => grandTotalWithTax * warrantyRate, [grandTotalWithTax]);
+  const warranty = useMemo(
+    () => grandTotalWithTax * warrantyRate,
+    [grandTotalWithTax]
+  );
 
   const consumables = useMemo(() => subTotal * consumablesRate, [subTotal]);
 
@@ -301,12 +300,21 @@ function Home() {
     [grandTotalWithTax, addersTotal]
   );
 
-  const margin25 = useMemo(() => combinedWithAdders / (1 - 0.25), [combinedWithAdders]);
-  const margin30 = useMemo(() => combinedWithAdders / (1 - 0.3), [combinedWithAdders]);
-  const margin35 = useMemo(() => combinedWithAdders / (1 - 0.35), [combinedWithAdders]);
+  const margin25 = useMemo(
+    () => combinedWithAdders / (1 - 0.25),
+    [combinedWithAdders]
+  );
+  const margin30 = useMemo(
+    () => combinedWithAdders / (1 - 0.3),
+    [combinedWithAdders]
+  );
+  const margin35 = useMemo(
+    () => combinedWithAdders / (1 - 0.35),
+    [combinedWithAdders]
+  );
 
   // ============================================================
-  // ✅ HOME REPORTS CRUD (MUST be ABOVE any conditional return)
+  // ✅ HOME REPORTS CRUD
   // ============================================================
   const REPORTS_API =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/reports";
@@ -314,6 +322,7 @@ function Home() {
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError, setReportsError] = useState("");
+  const [reportSortBy, setReportSortBy] = useState("dateDesc"); // dateDesc | dateAsc | nameAsc | nameDesc
 
   const blankReport = useMemo(
     () => ({
@@ -322,8 +331,8 @@ function Home() {
       CustomerName: "",
       Address: "",
       Status: 0,
-      Date: "", // yyyy-mm-dd
-      ProjectNumber: "", // read-only-ish; backend can generate
+      Date: "",
+      ProjectNumber: "",
     }),
     []
   );
@@ -363,33 +372,29 @@ function Home() {
     setReportDraft(blankReport);
   }, [blankReport]);
 
-  const startEditReport = useCallback(
-    (r) => {
-      const id = String(r?.ReportId || r?.reportId || r?.id || "").trim();
-      setEditingId(id);
+  const startEditReport = useCallback((r) => {
+    const id = String(r?.ReportId || r?.reportId || r?.id || "").trim();
+    setEditingId(id);
 
-      const isoDate = (() => {
-        const v = r?.Date ?? r?.date ?? "";
-        if (!v) return "";
-        // if already yyyy-mm-dd
-        if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return String(v);
-        const d = new window.Date(v);
-        if (Number.isNaN(d.getTime())) return "";
-        return d.toISOString().slice(0, 10);
-      })();
+    const isoDate = (() => {
+      const v = r?.Date ?? r?.date ?? "";
+      if (!v) return "";
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return String(v);
+      const d = new window.Date(v);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toISOString().slice(0, 10);
+    })();
 
-      setReportDraft({
-        ReportId: id,
-        ReportName: r?.ReportName ?? "",
-        CustomerName: r?.CustomerName ?? "",
-        Address: r?.Address ?? "",
-        Status: Number(r?.Status ?? 0) || 0,
-        Date: isoDate,
-        ProjectNumber: r?.ProjectNumber ?? "",
-      });
-    },
-    []
-  );
+    setReportDraft({
+      ReportId: id,
+      ReportName: r?.ReportName ?? "",
+      CustomerName: r?.CustomerName ?? "",
+      Address: r?.Address ?? "",
+      Status: Number(r?.Status ?? 0) || 0,
+      Date: isoDate,
+      ProjectNumber: r?.ProjectNumber ?? "",
+    });
+  }, []);
 
   const saveReport = useCallback(async () => {
     setReportsError("");
@@ -407,7 +412,6 @@ function Home() {
         Address: String(reportDraft.Address ?? ""),
         Status: Number(reportDraft.Status ?? 0) || 0,
         Date: reportDraft.Date ? String(reportDraft.Date) : null,
-        // Let backend generate ProjectNumber if blank
         ProjectNumber:
           reportDraft.ProjectNumber === "" || reportDraft.ProjectNumber == null
             ? null
@@ -475,7 +479,66 @@ function Home() {
     [normalizeGuid]
   );
 
-  // ✅ KEEP: selected page routing
+  const getStatusLabel = useCallback((status) => {
+    const s = Number(status ?? 0);
+    if (s === 1) return "Active Jobs";
+    if (s === 2) return "Lost Jobs";
+    return "Other";
+  }, []);
+
+  const parseDateValue = useCallback((v) => {
+    if (!v) return 0;
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+  }, []);
+
+  const sortReports = useCallback(
+    (list) => {
+      const copy = [...list];
+
+      copy.sort((a, b) => {
+        const aName = String(a?.ReportName ?? "").toLowerCase();
+        const bName = String(b?.ReportName ?? "").toLowerCase();
+        const aDate = parseDateValue(a?.Date ?? a?.date);
+        const bDate = parseDateValue(b?.Date ?? b?.date);
+
+        switch (reportSortBy) {
+          case "dateAsc":
+            return aDate - bDate || aName.localeCompare(bName);
+          case "nameAsc":
+            return aName.localeCompare(bName) || bDate - aDate;
+          case "nameDesc":
+            return bName.localeCompare(aName) || bDate - aDate;
+          case "dateDesc":
+          default:
+            return bDate - aDate || aName.localeCompare(bName);
+        }
+      });
+
+      return copy;
+    },
+    [parseDateValue, reportSortBy]
+  );
+
+  const groupedReports = useMemo(() => {
+    const active = [];
+    const lost = [];
+    const other = [];
+
+    for (const r of reports) {
+      const status = Number(r?.Status ?? 0);
+      if (status === 1) active.push(r);
+      else if (status === 2) lost.push(r);
+      else other.push(r);
+    }
+
+    return {
+      active: sortReports(active),
+      lost: sortReports(lost),
+      other: sortReports(other),
+    };
+  }, [reports, sortReports]);
+
   if (selected === 1000) {
     return (
       <BoxView1
@@ -486,7 +549,6 @@ function Home() {
     );
   }
 
-  // ✅ UPDATED: clear endpoint should use your deployed API + reportId
   const handleClearAll = async () => {
     if (!reportId) {
       alert("Set a Report ID first.");
@@ -521,9 +583,8 @@ function Home() {
     }
   };
 
-  // ✅ Totals page: LEFT aligned + evenly spaced 3 columns (Label | Hours/% | Total-with-tax)
   const TotalsOnly = () => {
-    const COLS = "360px 120px 180px"; // label | hours | total (consistent widths)
+    const COLS = "360px 120px 180px";
 
     const Row = ({
       label,
@@ -578,7 +639,6 @@ function Home() {
       </div>
     );
 
-    // ✅ NEW: fallback rows by section if byType is empty
     const laborSectionRows = useMemo(() => {
       const order = [
         ["labor1", "Labor 1"],
@@ -613,19 +673,9 @@ function Home() {
             >
               Back to Inputs
             </button>
-
-            <button
-              className="btn btn-sm btn-outline-danger"
-              onClick={handleClearAll}
-              title="Deletes equipment for this report"
-              disabled={!reportId}
-            >
-              Clear ALL Equipment (report)
-            </button>
           </div>
         </div>
 
-        {/* ✅ tax rate control */}
         <div
           style={{
             marginTop: 10,
@@ -654,9 +704,7 @@ function Home() {
           <span className="text-muted">(currently {pct(taxRate)})</span>
         </div>
 
-        {/* ✅ Left-aligned “table” block with fixed width */}
         <div style={{ marginTop: 12, width: "fit-content" }}>
-          {/* column headers */}
           <div
             style={{
               display: "grid",
@@ -673,7 +721,6 @@ function Home() {
             <div style={{ textAlign: "right" }}>Total (w/ tax)</div>
           </div>
 
-          {/* ===== Non-Labor ===== */}
           <SectionTitle>Non-Labor</SectionTitle>
 
           {Object.entries(totalsBySection).map(([k, v]) => (
@@ -692,7 +739,6 @@ function Home() {
             strong
           />
 
-          {/* ===== Labor ===== */}
           <SectionTitle>Labor (Grouped by Type)</SectionTitle>
 
           {laborByType.length > 0 ? (
@@ -724,7 +770,6 @@ function Home() {
             strong
           />
 
-          {/* ===== Adders ===== */}
           <SectionTitle>Adders</SectionTitle>
 
           <Row
@@ -737,7 +782,11 @@ function Home() {
             hours={`${laborHoursTotal.toFixed(2)} hrs`}
             total={money(perDiem)}
           />
-          <Row label="Warranty" hours={pct(warrantyRate)} total={money(warranty)} />
+          <Row
+            label="Warranty"
+            hours={pct(warrantyRate)}
+            total={money(warranty)}
+          />
           <Row
             label="Consumables"
             hours={pct(consumablesRate)}
@@ -745,6 +794,7 @@ function Home() {
           />
 
           <Row label="Adders Total" hours="" total={money(addersTotal)} strong />
+
           <Row
             label="Non-Labor Grand Total + Adders"
             hours=""
@@ -752,40 +802,39 @@ function Home() {
             strong
           />
 
-          {/* ===== Sell Price Targets ===== */}
-          <SectionTitle>Sell Price Targets</SectionTitle>
-
-          <Row label="25% Margin" hours={pct(0.25)} total={money(margin25)} />
-          <Row label="30% Margin" hours={pct(0.3)} total={money(margin30)} />
-          <Row label="35% Margin" hours={pct(0.35)} total={money(margin35)} />
-
-          {/* ===== Final ===== */}
-          <SectionTitle>Final</SectionTitle>
           <Row
             label="Combined Grand Total + Adders"
             hours=""
             total={money(combinedWithAdders)}
             strong
           />
+
+          <SectionTitle>Sell Price Targets</SectionTitle>
+
+          <Row label="25% Margin" hours={pct(0.25)} total={money(margin25)} />
+          <Row label="30% Margin" hours={pct(0.3)} total={money(margin30)} />
+          <Row label="35% Margin" hours={pct(0.35)} total={money(margin35)} />
         </div>
       </div>
     );
   };
 
   const InputsOnly = () => (
-    <div className="card mb-3">
-      <div className="card-body d-flex justify-content-between align-items-center">
-        <div>
-          <div style={{ fontSize: 12, opacity: 0.75 }}>
-            Report ID:{" "}
-            <span style={{ fontFamily: "monospace" }}>
-              {reportId ? reportId : "Not set"}
-            </span>
-          </div>
-        </div>
+    <div className="mb-3">
+      <div className="text-center mb-2">
+        <h1 className="m-0">Capital City</h1>
+      </div>
+
+      <div className="d-flex justify-content-center gap-2">
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={() => setShowHomeScreen(true)}
+        >
+          Back To Reports
+        </button>
 
         <button
-          className="btn btn-sm btn-primary"
+          className="btn btn-primary btn-sm"
           onClick={() => setViewMode("totals")}
           disabled={!reportId}
           title={!reportId ? "Set Report ID first" : ""}
@@ -793,11 +842,72 @@ function Home() {
           View Totals
         </button>
       </div>
-      {/* ✅ Report ID control (left intentionally unchanged/blank in your version) */}
     </div>
   );
 
-  // ✅ HOME SCREEN: Reports CRUD (hooks are already above; safe)
+  const ReportsTable = ({ title, rows }) => {
+    if (!rows.length) return null;
+
+    return (
+      <div className="mt-4">
+        <h6 className="mb-2">{title}</h6>
+        <div className="table-responsive">
+          <table className="table table-sm table-striped align-middle">
+            <thead>
+              <tr>
+                <th>Report Name</th>
+                <th>Customer</th>
+                <th>Project #</th>
+                <th>Status</th>
+                <th>Date</th>
+                <th style={{ width: 260 }} className="text-end">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const rid = String(r?.ReportId || r?.reportId || r?.id || "");
+                return (
+                  <tr key={rid || Math.random()}>
+                    <td>{r?.ReportName ?? ""}</td>
+                    <td>{r?.CustomerName ?? ""}</td>
+                    <td>{r?.ProjectNumber ?? ""}</td>
+                    <td>{getStatusLabel(r?.Status)}</td>
+                    <td>{String(r?.Date ?? "").slice(0, 10)}</td>
+                    <td className="text-end">
+                      <div className="btn-group">
+                        <button
+                          className="btn btn-sm btn-primary"
+                          onClick={() => openReportFromRow(rid)}
+                          title="Set ReportId and open inputs"
+                        >
+                          Open
+                        </button>
+                        <button
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={() => startEditReport(r)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn btn-sm btn-outline-danger"
+                          onClick={() => deleteReport(rid)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   if (showHomeScreen) {
     return (
       <div className="home-container">
@@ -808,8 +918,23 @@ function Home() {
             <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
               <h5 className="mb-0">Reports</h5>
 
-              <div className="d-flex gap-2">
-                <button className="btn btn-outline-secondary btn-sm" onClick={loadReports}>
+              <div className="d-flex gap-2 align-items-center flex-wrap">
+                <select
+                  className="form-select form-select-sm"
+                  style={{ width: 180 }}
+                  value={reportSortBy}
+                  onChange={(e) => setReportSortBy(e.target.value)}
+                >
+                  <option value="dateDesc">Sort: Date (Newest)</option>
+                  <option value="dateAsc">Sort: Date (Oldest)</option>
+                  <option value="nameAsc">Sort: Project Name (A-Z)</option>
+                  <option value="nameDesc">Sort: Project Name (Z-A)</option>
+                </select>
+
+                <button
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={loadReports}
+                >
                   Refresh
                 </button>
                 <button className="btn btn-primary btn-sm" onClick={startNewReport}>
@@ -822,7 +947,6 @@ function Home() {
               <div className="alert alert-danger mt-3 mb-0">{reportsError}</div>
             )}
 
-            {/* Editor */}
             <div className="mt-3">
               <div className="row g-2">
                 <div className="col-md-4">
@@ -843,7 +967,10 @@ function Home() {
                     className="form-control"
                     value={reportDraft.CustomerName}
                     onChange={(e) =>
-                      setReportDraft((p) => ({ ...p, CustomerName: e.target.value }))
+                      setReportDraft((p) => ({
+                        ...p,
+                        CustomerName: e.target.value,
+                      }))
                     }
                     placeholder="Customer"
                   />
@@ -894,7 +1021,10 @@ function Home() {
                     className="form-control"
                     value={reportDraft.ProjectNumber}
                     onChange={(e) =>
-                      setReportDraft((p) => ({ ...p, ProjectNumber: e.target.value }))
+                      setReportDraft((p) => ({
+                        ...p,
+                        ProjectNumber: e.target.value,
+                      }))
                     }
                     placeholder="auto"
                   />
@@ -911,77 +1041,23 @@ function Home() {
               </div>
             </div>
 
-            {/* List */}
             <div className="mt-4">
               {reportsLoading ? (
                 <div className="text-muted">Loading reports…</div>
+              ) : reports.length === 0 ? (
+                <div className="text-muted">No reports found.</div>
               ) : (
-                <div className="table-responsive">
-                  <table className="table table-sm table-striped align-middle">
-                    <thead>
-                      <tr>
-                        <th>Report Name</th>
-                        <th>Customer</th>
-                        <th>Project #</th>
-                        <th>Status</th>
-                        <th>Date</th>
-                        <th style={{ width: 260 }} className="text-end">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reports.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="text-muted">
-                            No reports found.
-                          </td>
-                        </tr>
-                      ) : (
-                        reports.map((r) => {
-                          const rid = String(r?.ReportId || r?.reportId || r?.id || "");
-                          return (
-                            <tr key={rid || Math.random()}>
-                              <td>{r?.ReportName ?? ""}</td>
-                              <td>{r?.CustomerName ?? ""}</td>
-                              <td>{r?.ProjectNumber ?? ""}</td>
-                              <td>{r?.Status ?? ""}</td>
-                              <td>{String(r?.Date ?? "").slice(0, 10)}</td>
-                              <td className="text-end">
-                                <div className="btn-group">
-                                  <button
-                                    className="btn btn-sm btn-primary"
-                                    onClick={() => openReportFromRow(rid)}
-                                    title="Set ReportId and open inputs"
-                                  >
-                                    Open
-                                  </button>
-                                  <button
-                                    className="btn btn-sm btn-outline-secondary"
-                                    onClick={() => startEditReport(r)}
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    className="btn btn-sm btn-outline-danger"
-                                    onClick={() => deleteReport(rid)}
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                <>
+                  <ReportsTable title="Active Jobs" rows={groupedReports.active} />
+                  <ReportsTable title="Lost Jobs" rows={groupedReports.lost} />
+                  <ReportsTable title="Other" rows={groupedReports.other} />
+                </>
               )}
             </div>
 
             <div className="mt-2 text-muted" style={{ fontSize: 12 }}>
-              Tip: “Open” sets the app’s ReportId (GUID) and takes you into the main inputs page.
+              Tip: “Open” sets the app’s ReportId (GUID) and takes you into the main
+              inputs page.
             </div>
           </div>
         </div>
@@ -989,23 +1065,17 @@ function Home() {
     );
   }
 
-  // ✅ Main app (unchanged)
   return (
     <div className="home-container">
-      <h1>Capital City</h1>
-
-      <button className="btn btn-primary btn-lg" onClick={() => setShowHomeScreen(true)}>
-        HOME
-      </button>
-
-      {/* ✅ Either totals OR inputs */}
       {viewMode === "totals" ? (
-        <TotalsOnly />
+        <>
+          <h1>Capital City</h1>
+          <TotalsOnly />
+        </>
       ) : (
         <>
           <InputsOnly />
 
-          {/* ✅ pass reportId to children that support it */}
           <div>
             <DbTestViewer
               reportId={reportId}
@@ -1013,57 +1083,95 @@ function Home() {
             />
           </div>
 
-          {/* Labor sections */}
           <div>
-            <Labor reportId={reportId} onTotalsChange={(t) => setLaborSection("labor1", t)} />
+            <Labor
+              reportId={reportId}
+              onTotalsChange={(t) => setLaborSection("labor1", t)}
+            />
           </div>
 
           <div>
-            <Demo reportId={reportId} onTotalsChange={(t) => setSectionCost("demo", readCost(t))} />
+            <Demo
+              reportId={reportId}
+              onTotalsChange={(t) => setSectionCost("demo", readCost(t))}
+            />
           </div>
 
           <div>
-            <Labor2 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor2", t)} />
+            <Labor2
+              reportId={reportId}
+              onTotalsChange={(t) => setLaborSection("labor2", t)}
+            />
           </div>
 
           <div>
-            <Rough reportId={reportId} onTotalsChange={(t) => setSectionCost("rough", readCost(t))} />
+            <Rough
+              reportId={reportId}
+              onTotalsChange={(t) => setSectionCost("rough", readCost(t))}
+            />
           </div>
 
           <div>
-            <Labor3 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor3", t)} />
+            <Labor3
+              reportId={reportId}
+              onTotalsChange={(t) => setLaborSection("labor3", t)}
+            />
           </div>
 
           <div>
-            <AirDistribution reportId={reportId} onTotalsChange={(t) => setSectionCost("air", readCost(t))} />
+            <AirDistribution
+              reportId={reportId}
+              onTotalsChange={(t) => setSectionCost("air", readCost(t))}
+            />
           </div>
 
           <div>
-            <Labor4 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor4", t)} />
+            <Labor4
+              reportId={reportId}
+              onTotalsChange={(t) => setLaborSection("labor4", t)}
+            />
           </div>
 
           <div>
-            <Electrical reportId={reportId} onTotalsChange={(t) => setSectionCost("electrical", readCost(t))} />
+            <Electrical
+              reportId={reportId}
+              onTotalsChange={(t) => setSectionCost("electrical", readCost(t))}
+            />
           </div>
 
           <div>
-            <Labor5 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor5", t)} />
+            <Labor5
+              reportId={reportId}
+              onTotalsChange={(t) => setLaborSection("labor5", t)}
+            />
           </div>
 
           <div>
-            <Piping reportId={reportId} onTotalsChange={(t) => setSectionCost("piping", readCost(t))} />
+            <Piping
+              reportId={reportId}
+              onTotalsChange={(t) => setSectionCost("piping", readCost(t))}
+            />
           </div>
 
           <div>
-            <Labor6 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor6", t)} />
+            <Labor6
+              reportId={reportId}
+              onTotalsChange={(t) => setLaborSection("labor6", t)}
+            />
           </div>
 
           <div>
-            <Completion reportId={reportId} onTotalsChange={(t) => setSectionCost("completion", readCost(t))} />
+            <Completion
+              reportId={reportId}
+              onTotalsChange={(t) => setSectionCost("completion", readCost(t))}
+            />
           </div>
 
           <div>
-            <Labor7 reportId={reportId} onTotalsChange={(t) => setLaborSection("labor7", t)} />
+            <Labor7
+              reportId={reportId}
+              onTotalsChange={(t) => setLaborSection("labor7", t)}
+            />
           </div>
         </>
       )}

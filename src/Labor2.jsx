@@ -8,12 +8,20 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [selected, setSelected] = useState(null);
-
+  const col = {
+    idx: { width: "3.25rem", whiteSpace: "nowrap" },
+    type: { width: "12rem", maxWidth: "12rem" },
+    subName: { width: "14rem", maxWidth: "14rem" },
+    hours: { width: "6.5rem", whiteSpace: "nowrap" },
+    cost: { width: "9rem", whiteSpace: "nowrap" },
+    actions: { width: "7rem", whiteSpace: "nowrap" },
+    clamp: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  };
   const API_BASE =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
   const CODE_NUMBER = "2000";
-  const BLUE = "#0b2a4a";
+  const BLUE = "#065329ff";
   // -------------------------
   // reportId helpers
   // -------------------------
@@ -239,18 +247,16 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
               backgroundColor: BLUE,
             }}
           >
-            <tr>
-              <th style={{ width: "4rem", backgroundColor: BLUE }}>#</th>
-              <th style={{ backgroundColor: BLUE }}>Labor Type</th>
-              <th style={{ width: "14rem", backgroundColor: BLUE }}>
+              <tr>
+              <th style={{ ...col.idx, backgroundColor: BLUE }}>#</th>
+              <th style={{ ...col.type, backgroundColor: BLUE }}>Labor Type</th>
+              <th style={{ ...col.subName, backgroundColor: BLUE }}>
                 Subcontractor Name
               </th>
-              <th style={{ width: "7rem", backgroundColor: BLUE }}>Hours</th>
-              <th style={{ width: "9rem", backgroundColor: BLUE }}>
-                Labor Cost
-              </th>
+              <th style={{ ...col.hours, backgroundColor: BLUE }}>Hours</th>
+              <th style={{ ...col.cost, backgroundColor: BLUE }}>Labor Cost</th>
               <th style={{ backgroundColor: BLUE }}>Notes</th>
-              <th style={{ width: "7rem", backgroundColor: BLUE }}>Actions</th>
+              <th style={{ ...col.actions, backgroundColor: BLUE }}>Actions</th>
             </tr>
           </thead>
 
@@ -289,18 +295,16 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
             ))}
           </tbody>
 
-          <tfoot
-            className="table-secondary"
-            style={{ position: "sticky", bottom: 0 }}
-          >
-            <tr>
-              <th colSpan={2}>Totals</th>
-              <th></th>
-              <th>{fmtHours(totals.laborHours)}</th>
-              <th>{fmtMoney(totals.laborCost)}</th>
-              <th colSpan={2}></th>
-            </tr>
-          </tfoot>
+       <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
+  <tr>
+    <th></th>
+    <th>Total</th>
+    <th></th>
+    <th>{fmtHours(totals.laborHours)}</th>
+    <th>{fmtMoney(totals.laborCost)}</th>
+    <th colSpan={2}></th>
+  </tr>
+</tfoot>
         </table>
       </div>
 

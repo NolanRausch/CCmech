@@ -13,7 +13,7 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
   const CODE_NUMBER = "3000";
-  const BLUE = "#0b2a4a";
+  const BLUE = "#9b2f0eff";
 
   // -------------------------
   // reportId helpers (TEMPLATE)
@@ -308,19 +308,16 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
               </tr>
             ))}
           </tbody>
-
-          <tfoot
-            className="table-secondary"
-            style={{ position: "sticky", bottom: 0 }}
-          >
-            <tr>
-              <th colSpan={2}>Totals</th>
-              <th></th>
-              <th>{fmtHours(totals.laborHours)}</th>
-              <th>{fmtMoney(totals.laborCost)}</th>
-              <th colSpan={2}></th>
-            </tr>
-          </tfoot>
+<tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
+  <tr>
+    <th></th>
+    <th>Total</th>
+    <th></th>
+    <th>{fmtHours(totals.laborHours)}</th>
+    <th>{fmtMoney(totals.laborCost)}</th>
+    <th colSpan={2}></th>
+  </tr>
+</tfoot>
         </table>
       </div>
 

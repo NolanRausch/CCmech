@@ -417,13 +417,15 @@ const fetchAlternates = useCallback(
             })}
           </tbody>
 
-          <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
-            <tr>
-              <th colSpan={3}>Total</th>
-              <th style={col.cost}>{fmtMoney(totals.materialCost)}</th>
-              <th colSpan={3}></th>
-            </tr>
-          </tfoot>
+         <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
+  <tr>
+    <th></th>
+    <th>Total</th>
+    <th></th>
+    <th style={col.cost}>{fmtMoney(totals.materialCost)}</th>
+    <th colSpan={3}></th>
+  </tr>
+</tfoot>
         </table>
       </div>
 

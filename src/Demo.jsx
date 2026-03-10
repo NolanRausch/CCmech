@@ -16,7 +16,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
   const API_BASE =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
-  const BLUE = "#0b2a4a";
+  const BLUE = "#065329ff";
 
   // -------------------------
   // reportId helpers (match Equipment viewer)
@@ -434,7 +434,9 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
 
           <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
             <tr>
-              <th colSpan={3}>Total Cost</th>
+             <th></th>
+    <th>Total</th>
+    <th></th>
               <th style={col.cost}>{fmtMoney(totalCost)}</th>
               <th colSpan={3}></th>
             </tr>

@@ -316,17 +316,16 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
             ))}
           </tbody>
 
-          <tfoot
-            className="table-secondary"
-            style={{ position: "sticky", bottom: 0 }}
-          >
-            <tr>
-              <th colSpan={3}>Totals</th>
-              <th>{fmtHours(totals.laborHours)}</th>
-              <th>{fmtMoney(totals.laborCost)}</th>
-              <th colSpan={2}></th>
-            </tr>
-          </tfoot>
+<tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
+  <tr>
+    <th></th>
+    <th>Total</th>
+    <th></th>
+    <th>{fmtHours(totals.laborHours)}</th>
+    <th>{fmtMoney(totals.laborCost)}</th>
+    <th colSpan={2}></th>
+  </tr>
+</tfoot>
         </table>
       </div>
 
