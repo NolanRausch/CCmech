@@ -67,6 +67,14 @@ function Home() {
     labor7: { cost: 0, hours: 0, byType: [] },
   });
 
+  // ✅ Adders can be turned on/off
+  const [enabledAdders, setEnabledAdders] = useState({
+    contingency: true,
+    perDiem: true,
+    warranty: true,
+    consumables: true,
+  });
+
   // ✅ ReportId helpers
   const isGuid = useCallback((s) => {
     return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
@@ -174,6 +182,13 @@ function Home() {
     },
     [readLaborPayload]
   );
+
+  const toggleAdder = useCallback((key) => {
+    setEnabledAdders((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  }, []);
 
   // ✅ Better money formatting
   const money = useCallback((val) => {
@@ -285,9 +300,38 @@ function Home() {
 
   const consumables = useMemo(() => subTotal * consumablesRate, [subTotal]);
 
+  const contingencyIncluded = useMemo(
+    () => (enabledAdders.contingency ? contingency : 0),
+    [enabledAdders.contingency, contingency]
+  );
+
+  const perDiemIncluded = useMemo(
+    () => (enabledAdders.perDiem ? perDiem : 0),
+    [enabledAdders.perDiem, perDiem]
+  );
+
+  const warrantyIncluded = useMemo(
+    () => (enabledAdders.warranty ? warranty : 0),
+    [enabledAdders.warranty, warranty]
+  );
+
+  const consumablesIncluded = useMemo(
+    () => (enabledAdders.consumables ? consumables : 0),
+    [enabledAdders.consumables, consumables]
+  );
+
   const addersTotal = useMemo(
-    () => contingency + perDiem + warranty + consumables,
-    [contingency, perDiem, warranty, consumables]
+    () =>
+      contingencyIncluded +
+      perDiemIncluded +
+      warrantyIncluded +
+      consumablesIncluded,
+    [
+      contingencyIncluded,
+      perDiemIncluded,
+      warrantyIncluded,
+      consumablesIncluded,
+    ]
   );
 
   const combinedWithAdders = useMemo(
@@ -631,6 +675,62 @@ function Home() {
       </div>
     );
 
+    const AdderRow = ({
+      checked,
+      onChange,
+      label,
+      hours = "",
+      total = "",
+    }) => (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: COLS,
+          columnGap: 14,
+          alignItems: "center",
+          padding: "3px 0",
+          fontSize: 12,
+          lineHeight: 1.35,
+        }}
+      >
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            margin: 0,
+            cursor: "pointer",
+          }}
+        >
+          <input type="checkbox" checked={checked} onChange={onChange} />
+          <span>{label}</span>
+        </label>
+
+        <div
+          style={{
+            textAlign: "right",
+            fontVariantNumeric: "tabular-nums",
+            whiteSpace: "nowrap",
+            opacity: hours ? 0.9 : 0.4,
+          }}
+        >
+          {hours}
+        </div>
+
+        <div
+          style={{
+            textAlign: "right",
+            fontWeight: 600,
+            fontVariantNumeric: "tabular-nums",
+            whiteSpace: "nowrap",
+            opacity: checked ? 1 : 0.45,
+          }}
+        >
+          {total}
+        </div>
+      </div>
+    );
+
     const SectionTitle = ({ children }) => (
       <div
         style={{ marginTop: 12, marginBottom: 6, fontSize: 12, fontWeight: 800 }}
@@ -718,7 +818,7 @@ function Home() {
           >
             <div>Label</div>
             <div style={{ textAlign: "right" }}>Hours / %</div>
-            <div style={{ textAlign: "right" }}>Total (w/ tax)</div>
+            <div style={{ textAlign: "right" }}>Total (included)</div>
           </div>
 
           <SectionTitle>Non-Labor</SectionTitle>
@@ -772,25 +872,36 @@ function Home() {
 
           <SectionTitle>Adders</SectionTitle>
 
-          <Row
+          <AdderRow
+            checked={enabledAdders.contingency}
+            onChange={() => toggleAdder("contingency")}
             label="Contingency"
             hours={pct(contingencyRate)}
-            total={money(contingency)}
+            total={money(contingencyIncluded)}
           />
-          <Row
+
+          <AdderRow
+            checked={enabledAdders.perDiem}
+            onChange={() => toggleAdder("perDiem")}
             label="Per Diem"
             hours={`${laborHoursTotal.toFixed(2)} hrs`}
-            total={money(perDiem)}
+            total={money(perDiemIncluded)}
           />
-          <Row
+
+          <AdderRow
+            checked={enabledAdders.warranty}
+            onChange={() => toggleAdder("warranty")}
             label="Warranty"
             hours={pct(warrantyRate)}
-            total={money(warranty)}
+            total={money(warrantyIncluded)}
           />
-          <Row
+
+          <AdderRow
+            checked={enabledAdders.consumables}
+            onChange={() => toggleAdder("consumables")}
             label="Consumables"
             hours={pct(consumablesRate)}
-            total={money(consumables)}
+            total={money(consumablesIncluded)}
           />
 
           <Row label="Adders Total" hours="" total={money(addersTotal)} strong />
