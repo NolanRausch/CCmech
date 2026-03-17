@@ -29,6 +29,13 @@ function Home() {
   // ✅ Editable tax rate (default 7%)
   const [taxRate, setTaxRate] = useState(0.07);
 
+  // ✅ Editable sell margin targets (defaults 25 / 30 / 35)
+  const [sellMargins, setSellMargins] = useState({
+    margin1: 0.25,
+    margin2: 0.3,
+    margin3: 0.35,
+  });
+
   // ✅ DEFAULT GUID
   const DEFAULT_REPORT_ID = "82e93dd1-7891-4f78-b06d-c5ba14c93c9d";
 
@@ -190,6 +197,16 @@ function Home() {
     }));
   }, []);
 
+  const setSellMargin = useCallback((key, pctValue) => {
+    const raw = Number(pctValue);
+    const safe = Number.isFinite(raw) ? Math.max(0, raw) / 100 : 0;
+
+    setSellMargins((prev) => {
+      if ((prev[key] ?? 0) === safe) return prev;
+      return { ...prev, [key]: safe };
+    });
+  }, []);
+
   // ✅ Better money formatting
   const money = useCallback((val) => {
     const n = Number(String(val ?? "").replace(/[^0-9.\-]/g, ""));
@@ -214,6 +231,14 @@ function Home() {
   }, []);
 
   const pct = useCallback((n) => `${(Number(n || 0) * 100).toFixed(2)}%`, []);
+
+  const fmtNum = useCallback((n) => {
+    const safe = Number(n) || 0;
+    return safe.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }, []);
 
   // ✅ Pre-tax subtotal across non-labor sections
   const subTotal = useMemo(() => {
@@ -344,18 +369,36 @@ function Home() {
     [grandTotalWithTax, addersTotal]
   );
 
-  const margin25 = useMemo(
-    () => combinedWithAdders / (1 - 0.25),
-    [combinedWithAdders]
-  );
-  const margin30 = useMemo(
-    () => combinedWithAdders / (1 - 0.3),
-    [combinedWithAdders]
-  );
-  const margin35 = useMemo(
-    () => combinedWithAdders / (1 - 0.35),
-    [combinedWithAdders]
-  );
+  const margin1Value = useMemo(() => {
+    const m = Number(sellMargins.margin1) || 0;
+    return m >= 1 ? 0 : combinedWithAdders / (1 - m);
+  }, [combinedWithAdders, sellMargins.margin1]);
+
+  const margin2Value = useMemo(() => {
+    const m = Number(sellMargins.margin2) || 0;
+    return m >= 1 ? 0 : combinedWithAdders / (1 - m);
+  }, [combinedWithAdders, sellMargins.margin2]);
+
+  const margin3Value = useMemo(() => {
+    const m = Number(sellMargins.margin3) || 0;
+    return m >= 1 ? 0 : combinedWithAdders / (1 - m);
+  }, [combinedWithAdders, sellMargins.margin3]);
+
+  // ✅ Return on man hours = (sales price target - combined total value) / hours
+  const romh1 = useMemo(() => {
+    if (!laborHoursTotal) return 0;
+    return (margin1Value - combinedWithAdders) / laborHoursTotal;
+  }, [margin1Value, combinedWithAdders, laborHoursTotal]);
+
+  const romh2 = useMemo(() => {
+    if (!laborHoursTotal) return 0;
+    return (margin2Value - combinedWithAdders) / laborHoursTotal;
+  }, [margin2Value, combinedWithAdders, laborHoursTotal]);
+
+  const romh3 = useMemo(() => {
+    if (!laborHoursTotal) return 0;
+    return (margin3Value - combinedWithAdders) / laborHoursTotal;
+  }, [margin3Value, combinedWithAdders, laborHoursTotal]);
 
   // ============================================================
   // ✅ HOME REPORTS CRUD
@@ -731,6 +774,63 @@ function Home() {
       </div>
     );
 
+    const SellRow = ({ value, onChange, total = "", romh = "" }) => (
+      <>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: COLS,
+            columnGap: 14,
+            alignItems: "center",
+            padding: "3px 0",
+            fontSize: 12,
+            lineHeight: 1.35,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              max="99.99"
+              value={Number((Number(value || 0) * 100).toFixed(2))}
+              onChange={onChange}
+              style={{ width: 90 }}
+            />
+            <span>Margin</span>
+          </div>
+
+          <div
+            style={{
+              textAlign: "right",
+              fontVariantNumeric: "tabular-nums",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {pct(value)}
+          </div>
+
+          <div
+            style={{
+              textAlign: "right",
+              fontWeight: 600,
+              fontVariantNumeric: "tabular-nums",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {total}
+          </div>
+        </div>
+
+        <Row
+          label="Return on Man Hours"
+          hours={laborHoursTotal ? `${laborHoursTotal.toFixed(2)} hrs` : "0.00 hrs"}
+          total={romh}
+          muted
+        />
+      </>
+    );
+
     const SectionTitle = ({ children }) => (
       <div
         style={{ marginTop: 12, marginBottom: 6, fontSize: 12, fontWeight: 800 }}
@@ -922,9 +1022,24 @@ function Home() {
 
           <SectionTitle>Sell Price Targets</SectionTitle>
 
-          <Row label="25% Margin" hours={pct(0.25)} total={money(margin25)} />
-          <Row label="30% Margin" hours={pct(0.3)} total={money(margin30)} />
-          <Row label="35% Margin" hours={pct(0.35)} total={money(margin35)} />
+          <SellRow
+            value={sellMargins.margin1}
+            onChange={(e) => setSellMargin("margin1", e.target.value)}
+            total={money(margin1Value)}
+            romh={money(romh1)}
+          />
+          <SellRow
+            value={sellMargins.margin2}
+            onChange={(e) => setSellMargin("margin2", e.target.value)}
+            total={money(margin2Value)}
+            romh={money(romh2)}
+          />
+          <SellRow
+            value={sellMargins.margin3}
+            onChange={(e) => setSellMargin("margin3", e.target.value)}
+            total={money(margin3Value)}
+            romh={money(romh3)}
+          />
         </div>
       </div>
     );
