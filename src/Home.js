@@ -82,6 +82,16 @@ function Home() {
     consumables: true,
   });
 
+  // ✅ Status helpers (frontend text ↔ backend number)
+  const STATUS_OPTIONS = useMemo(
+    () => [
+      { label: "Bid", value: 0 },
+      { label: "Active", value: 1 },
+      { label: "Lost", value: 2 },
+    ],
+    []
+  );
+
   // ✅ ReportId helpers
   const isGuid = useCallback((s) => {
     return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
@@ -231,14 +241,6 @@ function Home() {
   }, []);
 
   const pct = useCallback((n) => `${(Number(n || 0) * 100).toFixed(2)}%`, []);
-
-  const fmtNum = useCallback((n) => {
-    const safe = Number(n) || 0;
-    return safe.toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  }, []);
 
   // ✅ Pre-tax subtotal across non-labor sections
   const subTotal = useMemo(() => {
@@ -420,6 +422,7 @@ function Home() {
       Status: 0,
       Date: "",
       ProjectNumber: "",
+      Notes: "",
     }),
     []
   );
@@ -461,6 +464,7 @@ function Home() {
 
   const startEditReport = useCallback((r) => {
     const id = String(r?.ReportId || r?.reportId || r?.id || "").trim();
+
     setEditingId(id);
 
     const isoDate = (() => {
@@ -480,6 +484,7 @@ function Home() {
       Status: Number(r?.Status ?? 0) || 0,
       Date: isoDate,
       ProjectNumber: r?.ProjectNumber ?? "",
+      Notes: r?.Notes ?? "",
     });
   }, []);
 
@@ -503,6 +508,10 @@ function Home() {
           reportDraft.ProjectNumber === "" || reportDraft.ProjectNumber == null
             ? null
             : Number(reportDraft.ProjectNumber),
+        Notes:
+          Number(reportDraft.Status ?? 0) === 2
+            ? String(reportDraft.Notes ?? "")
+            : null,
       };
 
       const url = isEdit
@@ -568,9 +577,9 @@ function Home() {
 
   const getStatusLabel = useCallback((status) => {
     const s = Number(status ?? 0);
-    if (s === 1) return "Active Jobs";
-    if (s === 2) return "Lost Jobs";
-    return "Other";
+    if (s === 1) return "Active";
+    if (s === 2) return "Lost";
+    return "Bid";
   }, []);
 
   const parseDateValue = useCallback((v) => {
@@ -608,21 +617,21 @@ function Home() {
   );
 
   const groupedReports = useMemo(() => {
+    const bids = [];
     const active = [];
     const lost = [];
-    const other = [];
 
     for (const r of reports) {
       const status = Number(r?.Status ?? 0);
       if (status === 1) active.push(r);
       else if (status === 2) lost.push(r);
-      else other.push(r);
+      else bids.push(r);
     }
 
     return {
+      bids: sortReports(bids),
       active: sortReports(active),
       lost: sortReports(lost),
-      other: sortReports(other),
     };
   }, [reports, sortReports]);
 
@@ -939,7 +948,7 @@ function Home() {
             strong
           />
 
-          <SectionTitle>Labor (Grouped by Type)</SectionTitle>
+          <SectionTitle>Labor </SectionTitle>
 
           {laborByType.length > 0 ? (
             laborByType.map((t) => (
@@ -1074,6 +1083,8 @@ function Home() {
   const ReportsTable = ({ title, rows }) => {
     if (!rows.length) return null;
 
+    const showNotes = title === "Lost Jobs";
+
     return (
       <div className="mt-4">
         <h6 className="mb-2">{title}</h6>
@@ -1086,6 +1097,7 @@ function Home() {
                 <th>Project #</th>
                 <th>Status</th>
                 <th>Date</th>
+                {showNotes && <th>Notes</th>}
                 <th style={{ width: 260 }} className="text-end">
                   Actions
                 </th>
@@ -1101,6 +1113,7 @@ function Home() {
                     <td>{r?.ProjectNumber ?? ""}</td>
                     <td>{getStatusLabel(r?.Status)}</td>
                     <td>{String(r?.Date ?? "").slice(0, 10)}</td>
+                    {showNotes && <td>{r?.Notes ?? ""}</td>}
                     <td className="text-end">
                       <div className="btn-group">
                         <button
@@ -1216,17 +1229,22 @@ function Home() {
 
                 <div className="col-md-2">
                   <label className="form-label small mb-1">Status</label>
-                  <input
-                    type="number"
-                    className="form-control"
-                    value={reportDraft.Status}
+                  <select
+                    className="form-select"
+                    value={Number(reportDraft.Status ?? 0)}
                     onChange={(e) =>
                       setReportDraft((p) => ({
                         ...p,
                         Status: Number(e.target.value) || 0,
                       }))
                     }
-                  />
+                  >
+                    {STATUS_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="col-md-3">
@@ -1256,6 +1274,24 @@ function Home() {
                   />
                 </div>
 
+                {Number(reportDraft.Status ?? 0) === 2 && (
+                  <div className="col-md-12">
+                    <label className="form-label small mb-1">Notes</label>
+                    <textarea
+                      className="form-control"
+                      rows={3}
+                      value={reportDraft.Notes}
+                      onChange={(e) =>
+                        setReportDraft((p) => ({
+                          ...p,
+                          Notes: e.target.value,
+                        }))
+                      }
+                      placeholder="Notes for lost job"
+                    />
+                  </div>
+                )}
+
                 <div className="col-md-4 d-flex align-items-end gap-2">
                   <button className="btn btn-success" onClick={saveReport}>
                     {editingId ? "Save Changes" : "Create Report"}
@@ -1274,9 +1310,9 @@ function Home() {
                 <div className="text-muted">No reports found.</div>
               ) : (
                 <>
+                  <ReportsTable title="Bid Jobs" rows={groupedReports.bids} />
                   <ReportsTable title="Active Jobs" rows={groupedReports.active} />
                   <ReportsTable title="Lost Jobs" rows={groupedReports.lost} />
-                  <ReportsTable title="Other" rows={groupedReports.other} />
                 </>
               )}
             </div>
