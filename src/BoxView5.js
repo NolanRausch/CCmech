@@ -572,7 +572,7 @@ export default function BoxView4({ number, onBack, reportId: reportIdProp }) {
           onClick={onHomeClick}
           disabled={saving || !reportId}
         >
-          {saving ? "Saving..." : "Home"}
+          {saving ? "Saving..." : "Save"}
         </button>
 
         <div className="text-center">

@@ -568,7 +568,7 @@ export default function BoxView2({ number, reportId: reportIdProp, onBack }) {
           onClick={handleHomeClick}
           disabled={submitting}
         >
-          {submitting ? "Submitting..." : "Home"}
+          {submitting ? "Submitting..." : "Save"}
         </button>
 
         <div className="text-center">

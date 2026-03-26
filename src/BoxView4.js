@@ -578,7 +578,7 @@ export default function BoxView4({ number, onBack, reportId: reportIdProp }) {
           disabled={saving || !reportId}
           title={!reportId ? "Set reportId first" : "Save and go back"}
         >
-          {saving ? "Saving..." : "Home"}
+          {saving ? "Saving..." : "Save"}
         </button>
 
         <div className="text-center">

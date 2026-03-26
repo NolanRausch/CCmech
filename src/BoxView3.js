@@ -512,7 +512,7 @@ export default function BoxView1({ number, onBack, reportId: reportIdProp }) {
       {/* TOP BAR like the others: Home (save+back) + Add */}
       <div className="d-flex align-items-center justify-content-between mb-3">
         <button type="button" className="btn btn-dark" onClick={onHomeClick} disabled={saving || !reportId}>
-          {saving ? "Saving..." : "Home"}
+          {saving ? "Saving..." : "Save"}
         </button>
 
         <div className="text-center">

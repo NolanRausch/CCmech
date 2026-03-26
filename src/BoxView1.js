@@ -499,7 +499,7 @@ const fetchJson = async (url, opts = {}) => {
           onClick={handleHomeClick}
           disabled={submitting}
         >
-          {submitting ? "Submitting..." : "Home"}
+          {submitting ? "Submitting..." : "Save"}
         </button>
 
         <div className="text-center">

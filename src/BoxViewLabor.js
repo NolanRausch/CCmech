@@ -437,7 +437,7 @@ export default function BoxViewLabor({
           disabled={saving}
           title={!reportId ? "Missing reportId" : ""}
         >
-          {saving ? "Saving..." : "Home"}
+          {saving ? "Saving..." : "Save"}
         </button>
 
         <div className="text-center">

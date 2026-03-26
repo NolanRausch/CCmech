@@ -606,7 +606,7 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
           disabled={saving}
           title={saving ? "Saving..." : "Save and return to Home"}
         >
-          {saving ? "Saving..." : "Home"}
+          {saving ? "Saving..." : "Save"}
         </button>
       </div>
     </div>

@@ -1317,10 +1317,7 @@ function Home() {
               )}
             </div>
 
-            <div className="mt-2 text-muted" style={{ fontSize: 12 }}>
-              Tip: “Open” sets the app’s ReportId (GUID) and takes you into the main
-              inputs page.
-            </div>
+           
           </div>
         </div>
       </div>
