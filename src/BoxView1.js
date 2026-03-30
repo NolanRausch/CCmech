@@ -502,18 +502,11 @@ const fetchJson = async (url, opts = {}) => {
           {submitting ? "Submitting..." : "Save"}
         </button>
 
-        <div className="text-center">
-          <h2 className="mb-0">Code {number}</h2>
-          <p className="mb-0 text-muted">Equipment</p>
-          <p className="mb-0 small text-muted">
-            Report:{" "}
-            {reportId ? (
-              <span className="font-monospace">{reportId}</span>
-            ) : (
-              <span className="text-danger">missing reportId</span>
-            )}
-          </p>
+        <div className="text-center flex-grow-1">
+           <div className="fw-semibold">Equipment Input</div>
+          <div className="text-muted small">Code 1000</div>
         </div>
+
 
         <div style={{ width: "90px" }} />
       </div>

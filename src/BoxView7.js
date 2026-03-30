@@ -103,7 +103,7 @@ function GridRow({
                   type="text"
                   value={value.notes}
                   onChange={handle("notes")}
-                  placeholder="Optional notes…"
+                  placeholder="Optional notes..."
                 />
               </td>
             </tr>
@@ -168,7 +168,6 @@ function Section({ idx, options, onChange, onRemoveSection }) {
         )}
       </div>
 
-      {/* Primary */}
       <GridRow
         label="Primary"
         value={options[0]}
@@ -176,7 +175,6 @@ function Section({ idx, options, onChange, onRemoveSection }) {
         showUsed={false}
       />
 
-      {/* Alternates */}
       {expanded && (
         <div className="ms-4">
           {options.slice(1).map((alt, i) => {
@@ -216,7 +214,7 @@ function Section({ idx, options, onChange, onRemoveSection }) {
 // =====================================================
 // COMPLETION EDITOR (Primary + AlternateCompletion)
 // - NO SUBMIT BUTTON
-// - "Home" button saves, then immediately onBack()
+// - "Save" button saves, then immediately onBack()
 // - reportId-scoped via query + x-report-id header
 // =====================================================
 export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
@@ -230,7 +228,7 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
   const [saving, setSaving] = useState(false);
 
   // -------------------------
-  // reportId helpers (TEMPLATE)
+  // reportId helpers
   // -------------------------
   const isGuid = useCallback((v) => {
     return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
@@ -246,7 +244,6 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
     [isGuid]
   );
 
-  // ✅ reportId for endpoints ONLY (prop > global > localStorage)
   const reportId = useMemo(() => {
     const fromProp = normalizeGuid(reportIdProp);
     if (fromProp) return fromProp;
@@ -278,7 +275,6 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
   useEffect(() => {
     async function loadPrimariesAndAlternates() {
       try {
-        // ✅ Completion primaries (report-scoped)
         const res = await fetch(withReport(`${API_BASE}/completion`), {
           headers: reportId ? { "x-report-id": reportId } : undefined,
         });
@@ -304,7 +300,6 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
               completionId,
             };
 
-            // ✅ AlternateCompletion rows for this CompletionId (report-scoped)
             let alternates = [];
             try {
               const altRes = await fetch(
@@ -336,7 +331,6 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
               console.warn("Failed to load alternates for", completionId, err);
             }
 
-            // Always add a blank “new alt” slot at end
             alternates.push({ ...blankAlt });
 
             return [primary, ...alternates];
@@ -368,19 +362,14 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
     (!it?.cost && it?.cost !== 0) &&
     (!it?.notes || !it.notes.trim());
 
-  // ✅ Save everything (used by Home button)
   const saveAll = useCallback(async () => {
     for (const row of sections) {
       const primary = row?.[0];
       if (!primary || isEmpty(primary)) continue;
 
-      // ==========================
-      // CASE 1: Existing Completion
-      // ==========================
       if (primary.isExisting && primary.completionId) {
         const completionId = primary.completionId;
 
-        // 1) UPDATE primary
         const updRes = await fetch(
           withReport(`${API_BASE}/completion/${encodeURIComponent(completionId)}`),
           {
@@ -402,6 +391,7 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
         } catch {
           updData = updText;
         }
+
         if (!updRes.ok) {
           throw new Error(
             `Completion UPDATE failed: ${
@@ -410,11 +400,9 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
           );
         }
 
-        // 2) Alternates: update existing, post new
         for (const alt of row.slice(1)) {
           if (!alt || isEmpty(alt)) continue;
 
-          // Existing alternate -> PUT
           if (alt.isExistingAlt && alt.alternateId) {
             const altUpdRes = await fetch(
               withReport(
@@ -444,52 +432,48 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
             if (!altUpdRes.ok) {
               throw new Error(
                 `AlternateCompletion UPDATE failed: ${
-                  typeof altUpdData === "string" ? altUpdData : JSON.stringify(altUpdData)
+                  typeof altUpdData === "string"
+                    ? altUpdData
+                    : JSON.stringify(altUpdData)
                 }`
               );
             }
             continue;
           }
 
-          // New alternate -> POST
-          if (!alt.isExistingAlt) {
-            const altRes = await fetch(withReport(`${API_BASE}/completion/alternates`), {
-              method: "POST",
-              headers: apiHeaders,
-              body: JSON.stringify({
-                CompletionId: completionId,
-                Description: String(alt.description ?? ""),
-                Supplier: String(alt.supplier ?? ""),
-                Cost: String(alt.cost ?? ""),
-                Notes: String(alt.notes ?? ""),
-                IsUsed: alt.used ? 1 : 0,
-              }),
-            });
+          const altRes = await fetch(withReport(`${API_BASE}/completion/alternates`), {
+            method: "POST",
+            headers: apiHeaders,
+            body: JSON.stringify({
+              CompletionId: completionId,
+              Description: String(alt.description ?? ""),
+              Supplier: String(alt.supplier ?? ""),
+              Cost: String(alt.cost ?? ""),
+              Notes: String(alt.notes ?? ""),
+              IsUsed: alt.used ? 1 : 0,
+            }),
+          });
 
-            const altText = await altRes.text();
-            let altData;
-            try {
-              altData = JSON.parse(altText);
-            } catch {
-              altData = altText;
-            }
+          const altText = await altRes.text();
+          let altData;
+          try {
+            altData = JSON.parse(altText);
+          } catch {
+            altData = altText;
+          }
 
-            if (!altRes.ok) {
-              throw new Error(
-                `AlternateCompletion POST failed: ${
-                  typeof altData === "string" ? altData : JSON.stringify(altData)
-                }`
-              );
-            }
+          if (!altRes.ok) {
+            throw new Error(
+              `AlternateCompletion POST failed: ${
+                typeof altData === "string" ? altData : JSON.stringify(altData)
+              }`
+            );
           }
         }
 
         continue;
       }
 
-      // ======================
-      // CASE 2: New Completion
-      // ======================
       const createRes = await fetch(withReport(`${API_BASE}/completion`), {
         method: "POST",
         headers: apiHeaders,
@@ -557,10 +541,9 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
         }
       }
     }
-  }, [sections, apiHeaders, reportId, withReport]);
+  }, [sections, apiHeaders, withReport]);
 
-  // ✅ Home button: save then immediately go back (no Submit button)
-  const handleHome = useCallback(async () => {
+  const handleSave = useCallback(async () => {
     if (saving) return;
     try {
       setSaving(true);
@@ -575,9 +558,51 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
   }, [saving, saveAll, onBack]);
 
   return (
-    <div className="container py-4">
-      <h2>Code {number}</h2>
-      <p>Completion</p>
+    <div className="container py-2">
+      <div className="d-flex align-items-start justify-content-between mb-3">
+        
+          <button
+            type="button"
+            className="btn btn-dark"
+            onClick={handleSave}
+            disabled={saving}
+            title={saving ? "Saving..." : "Save and return to Home"}
+          >
+            {saving ? "Saving..." : "Save"}
+          </button>
+       
+
+        <div className="text-center flex-grow-1">
+           <div className="fw-semibold">Completion Input</div>
+          <div className="text-muted small">Code 7000</div>
+        </div>
+
+        <div
+          style={{
+            minWidth: 120,
+            display: "flex",
+            justifyContent: "flex-end",
+          }}
+        >
+          <button
+            type="button"
+            className="btn btn-outline-primary"
+            onClick={addSection}
+            disabled={saving}
+            title="Add Item"
+            style={{
+              width: 40,
+              height: 40,
+              padding: 0,
+              fontSize: 22,
+              lineHeight: 1,
+              borderRadius: 8,
+            }}
+          >
+            +
+          </button>
+        </div>
+      </div>
 
       {sections.map((opts, i) => (
         <Section
@@ -589,25 +614,8 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
         />
       ))}
 
-      <div className="d-flex flex-wrap gap-2 mb-4">
-        <button
-          type="button"
-          className="btn btn-outline-primary"
-          onClick={addSection}
-          disabled={saving}
-        >
-          + Add Item (starts with 2 alts)
-        </button>
-
-        <button
-          type="button"
-          className="btn btn-dark"
-          onClick={handleHome}
-          disabled={saving}
-          title={saving ? "Saving..." : "Save and return to Home"}
-        >
-          {saving ? "Saving..." : "Save"}
-        </button>
+      <div className="text-center text-muted small mt-3">
+        Note: Save saves everything and returns to the previous screen.
       </div>
     </div>
   );

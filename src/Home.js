@@ -93,7 +93,11 @@ function Home() {
   );
 
   // ✅ which report group to show on home screen
-  const [reportGroupFilter, setReportGroupFilter] = useState("bids"); // bids | active | lost
+  const [reportGroupFilter, setReportGroupFilter] = useState("all"); // all | bids | active | lost
+
+  // ✅ Azure signed-in user
+  const [azureUser, setAzureUser] = useState(null);
+  const [azureUserLoading, setAzureUserLoading] = useState(false);
 
   // ✅ ReportId helpers
   const isGuid = useCallback((s) => {
@@ -218,6 +222,25 @@ function Home() {
       if ((prev[key] ?? 0) === safe) return prev;
       return { ...prev, [key]: safe };
     });
+  }, []);
+
+  const loadAzureUser = useCallback(async () => {
+    setAzureUserLoading(true);
+    try {
+      const res = await fetch("/.auth/me", {
+        credentials: "include",
+      });
+
+      const data = await res.json().catch(() => null);
+      const principal = data?.clientPrincipal || null;
+
+      setAzureUser(principal);
+    } catch (e) {
+      console.error("❌ loadAzureUser:", e);
+      setAzureUser(null);
+    } finally {
+      setAzureUserLoading(false);
+    }
   }, []);
 
   // ✅ Better money formatting
@@ -457,8 +480,11 @@ function Home() {
   }, [REPORTS_API]);
 
   useEffect(() => {
-    if (showHomeScreen) loadReports();
-  }, [showHomeScreen, loadReports]);
+    if (showHomeScreen) {
+      loadReports();
+      loadAzureUser();
+    }
+  }, [showHomeScreen, loadReports, loadAzureUser]);
 
   const startNewReport = useCallback(() => {
     setEditingId("");
@@ -645,8 +671,19 @@ function Home() {
     if (reportGroupFilter === "lost") {
       return { title: "Lost Jobs", rows: groupedReports.lost };
     }
-    return { title: "Bid Jobs", rows: groupedReports.bids };
-  }, [groupedReports, reportGroupFilter]);
+    if (reportGroupFilter === "bids") {
+      return { title: "Bid Jobs", rows: groupedReports.bids };
+    }
+
+    return {
+      title: "All Reports",
+      rows: sortReports([
+        ...groupedReports.bids,
+        ...groupedReports.active,
+        ...groupedReports.lost,
+      ]),
+    };
+  }, [groupedReports, reportGroupFilter, sortReports]);
 
   if (selected === 1000) {
     return (
@@ -1168,7 +1205,20 @@ function Home() {
         <div className="card mt-3">
           <div className="card-body">
             <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
-              <h5 className="mb-0">Reports</h5>
+              <div>
+                <h5 className="mb-0">Reports</h5>
+                <div className="small text-muted mt-1">
+                  {azureUserLoading
+                    ? "User: loading..."
+                    : azureUser
+                    ? `User: ${azureUser.userDetails || "Signed in"}${
+                        azureUser.identityProvider
+                          ? ` (${azureUser.identityProvider})`
+                          : ""
+                      }`
+                    : "User: not signed in"}
+                </div>
+              </div>
 
               <div className="d-flex gap-2 align-items-center flex-wrap">
                 <select
@@ -1177,6 +1227,7 @@ function Home() {
                   value={reportGroupFilter}
                   onChange={(e) => setReportGroupFilter(e.target.value)}
                 >
+                  <option value="all">Show: All</option>
                   <option value="bids">Show: Bid</option>
                   <option value="active">Show: Active</option>
                   <option value="lost">Show: Lost</option>
@@ -1196,7 +1247,10 @@ function Home() {
 
                 <button
                   className="btn btn-outline-secondary btn-sm"
-                  onClick={loadReports}
+                  onClick={() => {
+                    loadReports();
+                    loadAzureUser();
+                  }}
                 >
                   Refresh
                 </button>
