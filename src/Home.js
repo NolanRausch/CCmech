@@ -92,6 +92,9 @@ function Home() {
     []
   );
 
+  // ✅ which report group to show on home screen
+  const [reportGroupFilter, setReportGroupFilter] = useState("bids"); // bids | active | lost
+
   // ✅ ReportId helpers
   const isGuid = useCallback((s) => {
     return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
@@ -635,6 +638,16 @@ function Home() {
     };
   }, [reports, sortReports]);
 
+  const currentReportGroup = useMemo(() => {
+    if (reportGroupFilter === "active") {
+      return { title: "Active Jobs", rows: groupedReports.active };
+    }
+    if (reportGroupFilter === "lost") {
+      return { title: "Lost Jobs", rows: groupedReports.lost };
+    }
+    return { title: "Bid Jobs", rows: groupedReports.bids };
+  }, [groupedReports, reportGroupFilter]);
+
   if (selected === 1000) {
     return (
       <BoxView1
@@ -1161,6 +1174,17 @@ function Home() {
                 <select
                   className="form-select form-select-sm"
                   style={{ width: 180 }}
+                  value={reportGroupFilter}
+                  onChange={(e) => setReportGroupFilter(e.target.value)}
+                >
+                  <option value="bids">Show: Bid</option>
+                  <option value="active">Show: Active</option>
+                  <option value="lost">Show: Lost</option>
+                </select>
+
+                <select
+                  className="form-select form-select-sm"
+                  style={{ width: 180 }}
                   value={reportSortBy}
                   onChange={(e) => setReportSortBy(e.target.value)}
                 >
@@ -1309,15 +1333,12 @@ function Home() {
               ) : reports.length === 0 ? (
                 <div className="text-muted">No reports found.</div>
               ) : (
-                <>
-                  <ReportsTable title="Bid Jobs" rows={groupedReports.bids} />
-                  <ReportsTable title="Active Jobs" rows={groupedReports.active} />
-                  <ReportsTable title="Lost Jobs" rows={groupedReports.lost} />
-                </>
+                <ReportsTable
+                  title={currentReportGroup.title}
+                  rows={currentReportGroup.rows}
+                />
               )}
             </div>
-
-           
           </div>
         </div>
       </div>
