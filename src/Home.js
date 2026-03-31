@@ -243,6 +243,10 @@ function Home() {
     }
   }, []);
 
+  const currentUserName = useMemo(() => {
+    return String(azureUser?.userDetails || "").trim();
+  }, [azureUser]);
+
   // ✅ Better money formatting
   const money = useCallback((val) => {
     const n = Number(String(val ?? "").replace(/[^0-9.\-]/g, ""));
@@ -527,6 +531,11 @@ function Home() {
         return;
       }
 
+      if (!isEdit && !currentUserName) {
+        alert("No logged in user found.");
+        return;
+      }
+
       const payload = {
         ReportName: String(reportDraft.ReportName ?? ""),
         CustomerName: String(reportDraft.CustomerName ?? ""),
@@ -541,6 +550,7 @@ function Home() {
           Number(reportDraft.Status ?? 0) === 2
             ? String(reportDraft.Notes ?? "")
             : null,
+        ...(isEdit ? {} : { CreatedBy: currentUserName }),
       };
 
       const url = isEdit
@@ -564,7 +574,14 @@ function Home() {
       console.error("❌ saveReport:", e);
       alert("❌ Save failed: " + (e.message || e));
     }
-  }, [REPORTS_API, editingId, reportDraft, loadReports, startNewReport]);
+  }, [
+    REPORTS_API,
+    editingId,
+    reportDraft,
+    loadReports,
+    startNewReport,
+    currentUserName,
+  ]);
 
   const deleteReport = useCallback(
     async (id) => {
@@ -645,12 +662,21 @@ function Home() {
     [parseDateValue, reportSortBy]
   );
 
+  const visibleReports = useMemo(() => {
+    if (!currentUserName) return [];
+    return reports.filter(
+      (r) =>
+        String(r?.CreatedBy || "").trim().toLowerCase() ===
+        currentUserName.toLowerCase()
+    );
+  }, [reports, currentUserName]);
+
   const groupedReports = useMemo(() => {
     const bids = [];
     const active = [];
     const lost = [];
 
-    for (const r of reports) {
+    for (const r of visibleReports) {
       const status = Number(r?.Status ?? 0);
       if (status === 1) active.push(r);
       else if (status === 2) lost.push(r);
@@ -662,7 +688,7 @@ function Home() {
       active: sortReports(active),
       lost: sortReports(lost),
     };
-  }, [reports, sortReports]);
+  }, [visibleReports, sortReports]);
 
   const currentReportGroup = useMemo(() => {
     if (reportGroupFilter === "active") {
@@ -1382,10 +1408,12 @@ function Home() {
             </div>
 
             <div className="mt-4">
-              {reportsLoading ? (
+              {reportsLoading || azureUserLoading ? (
                 <div className="text-muted">Loading reports…</div>
-              ) : reports.length === 0 ? (
-                <div className="text-muted">No reports found.</div>
+              ) : currentUserName && currentReportGroup.rows.length === 0 ? (
+                <div className="text-muted">No reports found for this user.</div>
+              ) : !currentUserName ? (
+                <div className="text-muted">No logged in user found.</div>
               ) : (
                 <ReportsTable
                   title={currentReportGroup.title}
