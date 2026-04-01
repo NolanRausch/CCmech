@@ -663,7 +663,8 @@ function Home() {
   );
 
   const visibleReports = useMemo(() => {
-    if (!currentUserName) return [];
+    if (!currentUserName) return reports;
+
     return reports.filter(
       (r) =>
         String(r?.CreatedBy || "").trim().toLowerCase() ===
@@ -1410,10 +1411,12 @@ function Home() {
             <div className="mt-4">
               {reportsLoading || azureUserLoading ? (
                 <div className="text-muted">Loading reports…</div>
-              ) : currentUserName && currentReportGroup.rows.length === 0 ? (
-                <div className="text-muted">No reports found for this user.</div>
-              ) : !currentUserName ? (
-                <div className="text-muted">No logged in user found.</div>
+              ) : currentReportGroup.rows.length === 0 ? (
+                <div className="text-muted">
+                  {currentUserName
+                    ? "No reports found for this user."
+                    : "No reports found."}
+                </div>
               ) : (
                 <ReportsTable
                   title={currentReportGroup.title}

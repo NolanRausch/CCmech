@@ -451,7 +451,7 @@ export default function BoxViewLabor({
       <form onSubmit={handleSubmit}>
         <div className="table-responsive">
           <table className="table table-striped table-hover table-sm align-middle">
-            <thead className="table-dark">
+            <thead style={{ backgroundColor: "#198754", color: "white" }}>
               <tr>
                 <th style={{ width: "4rem" }}>#</th>
                 <th style={{ width: "12rem" }}>Labor Type</th>
@@ -567,7 +567,7 @@ export default function BoxViewLabor({
         </div>
 
         <div className="text-muted mt-2 small">
-          Note: Removing an existing row will delete it on submit.
+          Note: Removing an existing row will delete it on submit. test test test
         </div>
       </form>
     </div>

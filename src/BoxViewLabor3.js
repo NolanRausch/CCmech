@@ -418,7 +418,7 @@ export default function BoxViewLabor({ codeNumber = "3000", onBack }) {
         </div>
 
         <div className="text-muted mt-2 small">
-          Note: Removing an existing row will delete it on submit.
+          Note: 
         </div>
       </form>
     </div>

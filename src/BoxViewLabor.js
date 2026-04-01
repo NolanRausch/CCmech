@@ -12,7 +12,13 @@ const HOURLY_RATES = {
 };
 
 // ✅ All dropdown options (stored in LaborType)
-const LABOR_TYPES = ["Welding", "Mech", "Service", "Subcontractor", "Engineering"];
+const LABOR_TYPES = [
+  "Welding",
+  "Mech",
+  "Service",
+  "Subcontractor",
+  "Engineering",
+];
 
 // -------------------------
 // reportId helpers (match other viewers)
@@ -125,16 +131,13 @@ export default function BoxViewLabor({
       const t = String(nextType || "");
       let next = { ...r, laborType: t };
 
-      // ✅ If switching away from Subcontractor, clear laborName
       if (!isLaborNameType(t)) next.laborName = "";
 
-      // Manual-cost types: hours should display as NA and payload hours should be null
       if (isManualCostType(t)) {
         next.laborHours = "NA";
         return next;
       }
 
-      // Hourly types: hours editable; if it was NA, clear it + recompute cost
       if (isHourlyType(t)) {
         next.laborHours = next.laborHours === "NA" ? "" : next.laborHours;
         next.laborCost = computeCostForRow(next);
@@ -160,6 +163,27 @@ export default function BoxViewLabor({
     [codeNumber]
   );
 
+  const headerColor = useMemo(() => {
+    switch (String(codeNumber ?? "")) {
+      case "1000":
+        return "#2467aa"; // blue
+      case "2000":
+        return "#198754"; // green
+      case "3000":
+        return "#fd7e14"; // orange
+      case "4000":
+        return "#ffc107"; // yellow
+      case "5000":
+        return "#6f42c1"; // purple
+      case "6000":
+        return "#20c997"; // teal
+      case "7000":
+        return "#4e4a4a"; // black
+      default:
+        return "#0b2a4a";
+    }
+  }, [codeNumber]);
+
   const load = useCallback(async () => {
     try {
       setLoading(true);
@@ -173,7 +197,9 @@ export default function BoxViewLabor({
       }
 
       const { res, data } = await fetchJson(
-        withReport(`${API_BASE}/labor/code/${encodeURIComponent(String(codeNumber))}`),
+        withReport(
+          `${API_BASE}/labor/code/${encodeURIComponent(String(codeNumber))}`
+        ),
         { method: "GET" }
       );
 
@@ -198,15 +224,16 @@ export default function BoxViewLabor({
           isExisting: true,
         };
 
-        // Enforce UI rules on load
         if (!isLaborNameType(base.laborType)) base.laborName = "";
-        if (isManualCostType(base.laborType)) return { ...base, laborHours: "NA" };
-        if (isHourlyType(base.laborType)) return { ...base, laborCost: computeCostForRow(base) };
+        if (isManualCostType(base.laborType))
+          return { ...base, laborHours: "NA" };
+        if (isHourlyType(base.laborType))
+          return { ...base, laborCost: computeCostForRow(base) };
 
         return base;
       });
 
-      mapped.push({ ...blank }); // keep one blank row
+      mapped.push({ ...blank });
 
       setRows(mapped);
       setDeletedIds([]);
@@ -241,17 +268,16 @@ export default function BoxViewLabor({
         const next = { ...r, ...patch };
         const t = String(next.laborType ?? "");
 
-        // ✅ If not Subcontractor, hard-clear laborName even if patch tries
         if (!isLaborNameType(t)) next.laborName = "";
 
-        // Hours changed on hourly types => recompute cost
-        if ("laborHours" in patch && isHourlyType(t)) next.laborCost = computeCostForRow(next);
+        if ("laborHours" in patch && isHourlyType(t))
+          next.laborCost = computeCostForRow(next);
 
-        // Cost edits on hourly types => ignore (computed)
-        if ("laborCost" in patch && isHourlyType(t)) next.laborCost = computeCostForRow(next);
+        if ("laborCost" in patch && isHourlyType(t))
+          next.laborCost = computeCostForRow(next);
 
-        // Prevent editing hours for manual-cost types (keep NA)
-        if ("laborHours" in patch && isManualCostType(t)) next.laborHours = "NA";
+        if ("laborHours" in patch && isManualCostType(t))
+          next.laborHours = "NA";
 
         return next;
       })
@@ -259,7 +285,9 @@ export default function BoxViewLabor({
 
   const setLaborType = (idx, nextType) =>
     setRows((prev) =>
-      prev.map((r, i) => (i === idx ? normalizeRowAfterTypeChange(r, nextType) : r))
+      prev.map((r, i) =>
+        i === idx ? normalizeRowAfterTypeChange(r, nextType) : r
+      )
     );
 
   const addRow = () => setRows((prev) => [...prev, { ...blank }]);
@@ -286,7 +314,9 @@ export default function BoxViewLabor({
 
       if (isHourlyType(t)) {
         const hasHours =
-          r?.laborHours !== "" && r?.laborHours != null && r?.laborHours !== "NA";
+          r?.laborHours !== "" &&
+          r?.laborHours != null &&
+          r?.laborHours !== "NA";
         return !(hasHours || hasNotes);
       }
 
@@ -316,16 +346,24 @@ export default function BoxViewLabor({
       }
 
       return {
-        reportId, // ✅ important for POST/PUT per new backend rules
+        reportId,
         CodeNumber: String(codeNumber ?? ""),
-        LaborName: isLaborNameType(t) && r.laborName ? String(r.laborName) : null,
+        LaborName:
+          isLaborNameType(t) && r.laborName ? String(r.laborName) : null,
         LaborType: laborType,
         LaborHours: laborHours,
         LaborCost: laborCost,
         Notes: r.notes ? String(r.notes) : null,
       };
     },
-    [codeNumber, computeCostForRow, isHourlyType, isLaborNameType, isManualCostType, reportId]
+    [
+      codeNumber,
+      computeCostForRow,
+      isHourlyType,
+      isLaborNameType,
+      isManualCostType,
+      reportId,
+    ]
   );
 
   const totals = useMemo(() => {
@@ -344,7 +382,14 @@ export default function BoxViewLabor({
       },
       { hours: 0, cost: 0 }
     );
-  }, [rows, computeCostForRow, isEmpty, isHourlyType, isManualCostType, parseNum]);
+  }, [
+    rows,
+    computeCostForRow,
+    isEmpty,
+    isHourlyType,
+    isManualCostType,
+    parseNum,
+  ]);
 
   const handleSubmit = useCallback(async () => {
     try {
@@ -356,22 +401,21 @@ export default function BoxViewLabor({
         return false;
       }
 
-      // 1) Delete removed existing rows
       for (const id of deletedIds) {
         const { res, data } = await fetchJson(
           withReport(`${API_BASE}/labor/${encodeURIComponent(id)}`),
           { method: "DELETE" }
         );
         if (!res.ok) {
-          throw new Error(data?.error || `DELETE failed for ${id} (HTTP ${res.status})`);
+          throw new Error(
+            data?.error || `DELETE failed for ${id} (HTTP ${res.status})`
+          );
         }
       }
 
-      // 2) Upsert remaining rows
       for (const r of rows) {
         if (!r || isEmpty(r)) continue;
 
-        // Existing -> PUT
         if (r.isExisting && r.laborId) {
           const { res, data } = await fetchJson(
             withReport(`${API_BASE}/labor/${encodeURIComponent(r.laborId)}`),
@@ -380,16 +424,17 @@ export default function BoxViewLabor({
               body: JSON.stringify(toPayload(r)),
             }
           );
-          if (!res.ok) throw new Error(data?.error || `PUT failed (HTTP ${res.status})`);
+          if (!res.ok)
+            throw new Error(data?.error || `PUT failed (HTTP ${res.status})`);
           continue;
         }
 
-        // New -> POST
         const { res, data } = await fetchJson(withReport(`${API_BASE}/labor`), {
           method: "POST",
           body: JSON.stringify(toPayload(r)),
         });
-        if (!res.ok) throw new Error(data?.error || `POST failed (HTTP ${res.status})`);
+        if (!res.ok)
+          throw new Error(data?.error || `POST failed (HTTP ${res.status})`);
       }
 
       return true;
@@ -403,12 +448,10 @@ export default function BoxViewLabor({
     }
   }, [deletedIds, fetchJson, isEmpty, reportId, rows, toPayload, withReport]);
 
-  // ✅ Home button submits every time, then goes back
   const onHomeClick = useCallback(async () => {
     if (saving) return;
     const ok = await handleSubmit();
     if (ok) {
-      // no popup; just refresh + back
       await load();
       onBack?.();
     }
@@ -428,7 +471,6 @@ export default function BoxViewLabor({
 
   return (
     <div className="container py-4">
-      {/* ✅ TOP BAR */}
       <div className="d-flex align-items-center justify-content-between mb-3">
         <button
           type="button"
@@ -444,12 +486,7 @@ export default function BoxViewLabor({
           <div className="fw-semibold">Labor Input</div>
           <div className="text-muted small">Code {String(codeNumber ?? "")}</div>
           <div className="text-muted small">
-            Report:{" "}
-            {reportId ? (
-              <span className="font-monospace">{reportId}</span>
-            ) : (
-              <span className="text-danger">missing reportId</span>
-            )}
+           
           </div>
         </div>
 
@@ -465,29 +502,27 @@ export default function BoxViewLabor({
 
       <div className="table-responsive">
         <table className="table table-striped table-hover table-sm align-middle table-fixed">
-          <thead style={{ backgroundColor: "#0b2a4a" }}>
-            <tr>
-              <th style={{ ...col.idx, backgroundColor: "#0b2a4a", color: "white" }}>
-                #
-              </th>
-              <th style={{ ...col.name, backgroundColor: "#0b2a4a", color: "white" }}>
-                Labor Name
-              </th>
-              <th style={{ ...col.type, backgroundColor: "#0b2a4a", color: "white" }}>
-                Labor Type
-              </th>
-              <th style={{ ...col.hours, backgroundColor: "#0b2a4a", color: "white" }}>
-                Hours
-              </th>
-              <th style={{ ...col.cost, backgroundColor: "#0b2a4a", color: "white" }}>
-                Labor Cost
-              </th>
-              <th style={{ backgroundColor: "#0b2a4a", color: "white" }}>Notes</th>
-              <th style={{ ...col.actions, backgroundColor: "#0b2a4a", color: "white" }}>
-                Actions
-              </th>
-            </tr>
-          </thead>
+        <thead>
+  <tr>
+    <th style={{ ...col.idx, backgroundColor: headerColor, color: "#fff" }}>#</th>
+    <th style={{ ...col.name, backgroundColor: headerColor, color: "#fff" }}>
+      Labor Name
+    </th>
+    <th style={{ ...col.type, backgroundColor: headerColor, color: "#fff" }}>
+      Labor Type
+    </th>
+    <th style={{ ...col.hours, backgroundColor: headerColor, color: "#fff" }}>
+      Hours
+    </th>
+    <th style={{ ...col.cost, backgroundColor: headerColor, color: "#fff" }}>
+      Labor Cost
+    </th>
+    <th style={{ backgroundColor: headerColor, color: "#fff" }}>Notes</th>
+    <th style={{ ...col.actions, backgroundColor: headerColor, color: "#fff" }}>
+      Actions
+    </th>
+  </tr>
+</thead>
 
           <tbody>
             {rows.map((r, i) => {
@@ -507,7 +542,9 @@ export default function BoxViewLabor({
                       <input
                         className="form-control form-control-sm"
                         value={r.laborName}
-                        onChange={(e) => updateRow(i, { laborName: e.target.value })}
+                        onChange={(e) =>
+                          updateRow(i, { laborName: e.target.value })
+                        }
                         placeholder="Subcontractor name"
                       />
                     ) : (
@@ -546,7 +583,9 @@ export default function BoxViewLabor({
                         step="0.25"
                         min="0"
                         value={r.laborHours === "NA" ? "" : r.laborHours}
-                        onChange={(e) => updateRow(i, { laborHours: e.target.value })}
+                        onChange={(e) =>
+                          updateRow(i, { laborHours: e.target.value })
+                        }
                         placeholder="0.00"
                       />
                     ) : (
@@ -561,7 +600,9 @@ export default function BoxViewLabor({
                       step="0.01"
                       min="0"
                       value={costValue}
-                      onChange={(e) => updateRow(i, { laborCost: e.target.value })}
+                      onChange={(e) =>
+                        updateRow(i, { laborCost: e.target.value })
+                      }
                       placeholder="0.00"
                       readOnly={hourly}
                     />
@@ -602,7 +643,7 @@ export default function BoxViewLabor({
       </div>
 
       <div className="text-muted mt-2 small">
-        Note: Removing an existing row will delete it on save.
+ 
       </div>
 
       <style>{`
@@ -611,5 +652,4 @@ export default function BoxViewLabor({
     </div>
   );
 }
-
 
