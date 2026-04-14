@@ -93,11 +93,16 @@ function Home() {
   );
 
   // ✅ which report group to show on home screen
-  const [reportGroupFilter, setReportGroupFilter] = useState("all"); // all | bids | active | lost
+  const [reportGroupFilter, setReportGroupFilter] = useState("all"); // all | bids | active | lost | shared
 
   // ✅ Azure signed-in user
   const [azureUser, setAzureUser] = useState(null);
   const [azureUserLoading, setAzureUserLoading] = useState(false);
+
+  // ✅ shared reports
+  const [sharedReports, setSharedReports] = useState([]);
+  const [sharedReportsLoading, setSharedReportsLoading] = useState(false);
+  const [sharedReportsError, setSharedReportsError] = useState("");
 
   // ✅ ReportId helpers
   const isGuid = useCallback((s) => {
@@ -416,7 +421,7 @@ function Home() {
     return m >= 1 ? 0 : combinedWithAdders / (1 - m);
   }, [combinedWithAdders, sellMargins.margin3]);
 
-  // ✅ Return on man hours = (sales price target - combined total value) / hours
+  // ✅ Return on man hours
   const romh1 = useMemo(() => {
     if (!laborHoursTotal) return 0;
     return (margin1Value - combinedWithAdders) / laborHoursTotal;
@@ -437,6 +442,9 @@ function Home() {
   // ============================================================
   const REPORTS_API =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/reports";
+
+  const SHARED_REPORTS_API =
+    "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/reports/shared";
 
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
@@ -483,12 +491,50 @@ function Home() {
     }
   }, [REPORTS_API]);
 
+  const loadSharedReports = useCallback(async () => {
+    if (!currentUserName) {
+      setSharedReports([]);
+      setSharedReportsError("");
+      return;
+    }
+
+    setSharedReportsLoading(true);
+    setSharedReportsError("");
+
+    try {
+      const res = await fetch(
+        `${SHARED_REPORTS_API}/${encodeURIComponent(currentUserName)}`
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.recordset)
+        ? data.recordset
+        : [];
+      setSharedReports(list);
+    } catch (e) {
+      console.error("❌ loadSharedReports:", e);
+      setSharedReports([]);
+      setSharedReportsError(e.message || String(e));
+    } finally {
+      setSharedReportsLoading(false);
+    }
+  }, [SHARED_REPORTS_API, currentUserName]);
+
   useEffect(() => {
     if (showHomeScreen) {
       loadReports();
       loadAzureUser();
     }
   }, [showHomeScreen, loadReports, loadAzureUser]);
+
+  useEffect(() => {
+    if (showHomeScreen) {
+      loadSharedReports();
+    }
+  }, [showHomeScreen, loadSharedReports]);
 
   const startNewReport = useCallback(() => {
     setEditingId("");
@@ -568,6 +614,7 @@ function Home() {
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
       await loadReports();
+      await loadSharedReports();
       startNewReport();
       alert("✅ Report saved");
     } catch (e) {
@@ -579,6 +626,7 @@ function Home() {
     editingId,
     reportDraft,
     loadReports,
+    loadSharedReports,
     startNewReport,
     currentUserName,
   ]);
@@ -598,13 +646,46 @@ function Home() {
         if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
         await loadReports();
+        await loadSharedReports();
         if (editingId === rid) startNewReport();
       } catch (e) {
         console.error("❌ deleteReport:", e);
         alert("❌ Delete failed: " + (e.message || e));
       }
     },
-    [REPORTS_API, loadReports, editingId, startNewReport]
+    [REPORTS_API, loadReports, loadSharedReports, editingId, startNewReport]
+  );
+
+  const shareReport = useCallback(
+    async (id) => {
+      const rid = String(id || "").trim();
+      if (!rid) return;
+
+      const username = window.prompt("Username to share report with:", "");
+      const clean = String(username || "").trim();
+      if (!clean) return;
+
+      try {
+        const res = await fetch(SHARED_REPORTS_API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ReportId: rid,
+            Username: clean,
+          }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+        alert("✅ Report shared");
+        await loadSharedReports();
+      } catch (e) {
+        console.error("❌ shareReport:", e);
+        alert("❌ Share failed: " + (e.message || e));
+      }
+    },
+    [SHARED_REPORTS_API, loadSharedReports]
   );
 
   const openReportFromRow = useCallback(
@@ -691,15 +772,26 @@ function Home() {
     };
   }, [visibleReports, sortReports]);
 
+  const sharedReportsSorted = useMemo(() => {
+    return sortReports(sharedReports);
+  }, [sharedReports, sortReports]);
+
   const currentReportGroup = useMemo(() => {
     if (reportGroupFilter === "active") {
-      return { title: "Active Jobs", rows: groupedReports.active };
+      return { title: "Active Jobs", rows: groupedReports.active, isShared: false };
     }
     if (reportGroupFilter === "lost") {
-      return { title: "Lost Jobs", rows: groupedReports.lost };
+      return { title: "Lost Jobs", rows: groupedReports.lost, isShared: false };
     }
     if (reportGroupFilter === "bids") {
-      return { title: "Bid Jobs", rows: groupedReports.bids };
+      return { title: "Bid Jobs", rows: groupedReports.bids, isShared: false };
+    }
+    if (reportGroupFilter === "shared") {
+      return {
+        title: "Shared With Me",
+        rows: sharedReportsSorted,
+        isShared: true,
+      };
     }
 
     return {
@@ -709,8 +801,9 @@ function Home() {
         ...groupedReports.active,
         ...groupedReports.lost,
       ]),
+      isShared: false,
     };
-  }, [groupedReports, reportGroupFilter, sortReports]);
+  }, [groupedReports, reportGroupFilter, sortReports, sharedReportsSorted]);
 
   if (selected === 1000) {
     return (
@@ -1157,7 +1250,7 @@ function Home() {
     </div>
   );
 
-  const ReportsTable = ({ title, rows }) => {
+  const ReportsTable = ({ title, rows, isShared = false }) => {
     if (!rows.length) return null;
 
     const showNotes = title === "Lost Jobs";
@@ -1175,7 +1268,7 @@ function Home() {
                 <th>Status</th>
                 <th>Date</th>
                 {showNotes && <th>Notes</th>}
-                <th style={{ width: 260 }} className="text-end">
+                <th style={{ width: isShared ? 180 : 360 }} className="text-end">
                   Actions
                 </th>
               </tr>
@@ -1200,18 +1293,29 @@ function Home() {
                         >
                           Open
                         </button>
-                        <button
-                          className="btn btn-sm btn-outline-secondary"
-                          onClick={() => startEditReport(r)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="btn btn-sm btn-outline-danger"
-                          onClick={() => deleteReport(rid)}
-                        >
-                          Delete
-                        </button>
+
+                        {!isShared && (
+                          <>
+                            <button
+                              className="btn btn-sm btn-outline-secondary"
+                              onClick={() => startEditReport(r)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline-info"
+                              onClick={() => shareReport(rid)}
+                            >
+                              Share
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => deleteReport(rid)}
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1258,6 +1362,7 @@ function Home() {
                   <option value="bids">Show: Bid</option>
                   <option value="active">Show: Active</option>
                   <option value="lost">Show: Lost</option>
+                  <option value="shared">Show: Shared With Me</option>
                 </select>
 
                 <select
@@ -1277,6 +1382,7 @@ function Home() {
                   onClick={() => {
                     loadReports();
                     loadAzureUser();
+                    loadSharedReports();
                   }}
                 >
                   Refresh
@@ -1289,6 +1395,10 @@ function Home() {
 
             {reportsError && (
               <div className="alert alert-danger mt-3 mb-0">{reportsError}</div>
+            )}
+
+            {sharedReportsError && (
+              <div className="alert alert-danger mt-3 mb-0">{sharedReportsError}</div>
             )}
 
             <div className="mt-3">
@@ -1409,11 +1519,13 @@ function Home() {
             </div>
 
             <div className="mt-4">
-              {reportsLoading || azureUserLoading ? (
+              {reportsLoading || azureUserLoading || sharedReportsLoading ? (
                 <div className="text-muted">Loading reports…</div>
               ) : currentReportGroup.rows.length === 0 ? (
                 <div className="text-muted">
-                  {currentUserName
+                  {reportGroupFilter === "shared"
+                    ? "No shared reports found."
+                    : currentUserName
                     ? "No reports found for this user."
                     : "No reports found."}
                 </div>
@@ -1421,6 +1533,7 @@ function Home() {
                 <ReportsTable
                   title={currentReportGroup.title}
                   rows={currentReportGroup.rows}
+                  isShared={currentReportGroup.isShared}
                 />
               )}
             </div>
