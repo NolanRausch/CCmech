@@ -104,6 +104,14 @@ function Home() {
   const [sharedReportsLoading, setSharedReportsLoading] = useState(false);
   const [sharedReportsError, setSharedReportsError] = useState("");
 
+  // ✅ share dropdown
+  const REPORT_USERNAMES_API =
+    "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/report-usernames";
+  const [shareUsernames, setShareUsernames] = useState([]);
+  const [shareUsernamesLoading, setShareUsernamesLoading] = useState(false);
+  const [shareOpenForId, setShareOpenForId] = useState("");
+  const [shareSelectedUsername, setShareSelectedUsername] = useState("");
+
   // ✅ ReportId helpers
   const isGuid = useCallback((s) => {
     return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
@@ -523,12 +531,35 @@ function Home() {
     }
   }, [SHARED_REPORTS_API, currentUserName]);
 
+  const loadShareUsernames = useCallback(async () => {
+    setShareUsernamesLoading(true);
+    try {
+      const res = await fetch(REPORT_USERNAMES_API);
+      const data = await res.json().catch(() => ([]));
+
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      const list = Array.isArray(data) ? data : [];
+      setShareUsernames(
+        list
+          .map((x) => String(x?.Username || "").trim())
+          .filter(Boolean)
+      );
+    } catch (e) {
+      console.error("❌ loadShareUsernames:", e);
+      setShareUsernames([]);
+    } finally {
+      setShareUsernamesLoading(false);
+    }
+  }, [REPORT_USERNAMES_API]);
+
   useEffect(() => {
     if (showHomeScreen) {
       loadReports();
       loadAzureUser();
+      loadShareUsernames();
     }
-  }, [showHomeScreen, loadReports, loadAzureUser]);
+  }, [showHomeScreen, loadReports, loadAzureUser, loadShareUsernames]);
 
   useEffect(() => {
     if (showHomeScreen) {
@@ -656,14 +687,18 @@ function Home() {
     [REPORTS_API, loadReports, loadSharedReports, editingId, startNewReport]
   );
 
-  const shareReport = useCallback(
-    async (id) => {
-      const rid = String(id || "").trim();
-      if (!rid) return;
+  const shareReport = useCallback((id) => {
+    const rid = String(id || "").trim();
+    if (!rid) return;
 
-      const username = window.prompt("Username to share report with:", "");
-      const clean = String(username || "").trim();
-      if (!clean) return;
+    setShareOpenForId(rid);
+    setShareSelectedUsername("");
+  }, []);
+
+  const confirmShareReport = useCallback(
+    async (rid) => {
+      const clean = String(shareSelectedUsername || "").trim();
+      if (!rid || !clean) return;
 
       try {
         const res = await fetch(SHARED_REPORTS_API, {
@@ -679,13 +714,15 @@ function Home() {
         if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
         alert("✅ Report shared");
+        setShareOpenForId("");
+        setShareSelectedUsername("");
         await loadSharedReports();
       } catch (e) {
         console.error("❌ shareReport:", e);
         alert("❌ Share failed: " + (e.message || e));
       }
     },
-    [SHARED_REPORTS_API, loadSharedReports]
+    [SHARED_REPORTS_API, shareSelectedUsername, loadSharedReports]
   );
 
   const openReportFromRow = useCallback(
@@ -1276,6 +1313,8 @@ function Home() {
             <tbody>
               {rows.map((r) => {
                 const rid = String(r?.ReportId || r?.reportId || r?.id || "");
+                const isShareOpen = shareOpenForId === rid;
+
                 return (
                   <tr key={rid || Math.random()}>
                     <td>{r?.ReportName ?? ""}</td>
@@ -1317,6 +1356,54 @@ function Home() {
                           </>
                         )}
                       </div>
+
+                      {!isShared && isShareOpen && (
+                        <div className="mt-2 d-flex justify-content-end">
+                          <div
+                            className="border rounded p-2 bg-white"
+                            style={{ minWidth: 260 }}
+                          >
+                            <input
+                              className="form-control form-control-sm"
+                              list={`share-usernames-${rid}`}
+                              value={shareSelectedUsername}
+                              onChange={(e) =>
+                                setShareSelectedUsername(e.target.value)
+                              }
+                              placeholder={
+                                shareUsernamesLoading
+                                  ? "Loading usernames..."
+                                  : "Select or type username"
+                              }
+                              disabled={shareUsernamesLoading}
+                            />
+                            <datalist id={`share-usernames-${rid}`}>
+                              {shareUsernames.map((u) => (
+                                <option key={u} value={u} />
+                              ))}
+                            </datalist>
+
+                            <div className="d-flex justify-content-end gap-2 mt-2">
+                              <button
+                                className="btn btn-sm btn-outline-secondary"
+                                onClick={() => {
+                                  setShareOpenForId("");
+                                  setShareSelectedUsername("");
+                                }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                className="btn btn-sm btn-success"
+                                disabled={!shareSelectedUsername}
+                                onClick={() => confirmShareReport(rid)}
+                              >
+                                Share
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -1383,6 +1470,7 @@ function Home() {
                     loadReports();
                     loadAzureUser();
                     loadSharedReports();
+                    loadShareUsernames();
                   }}
                 >
                   Refresh
