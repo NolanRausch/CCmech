@@ -234,7 +234,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
 
         <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
           CODE 3000 - Equipment Rough: Rigging, Roofing, Pads, Cutting/Coring, Tool Rental,
-          Construction
+          Construction, GC, Storage Containers
         </h5>
       </div>
 

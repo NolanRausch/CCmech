@@ -245,7 +245,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
         </button>
 
         <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
-          CODE 4000 - Air Distribution, Metal, Hinges, Piping, Flex Grills, Diffusers
+          CODE 4000 - Air Distribution, Sheet Metal, Hinges, Flue Piping, Flex Grills, Diffusers, Insulation, Snap Lock
         </h5>
       </div>
 

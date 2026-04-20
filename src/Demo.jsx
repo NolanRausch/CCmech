@@ -287,7 +287,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
 
         <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
           CODE 2000 - Prep: Demolition, Deliveries, Trucking, Fencing, Eng Fees,
-          Refrigerant Recovery
+          Refrigerant Recovery, Dumpsters
         </h5>
       </div>
 

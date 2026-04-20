@@ -233,7 +233,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
         </button>
 
         <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
-          CODE 5000 - Control Wiring Power Wiring
+          CODE 5000 - Control Wiring, Power Wiring, Fire Alarms
         </h5>
       </div>
 

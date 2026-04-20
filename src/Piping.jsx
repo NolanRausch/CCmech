@@ -239,8 +239,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
         </button>
 
         <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
-          CODE 6000 - Gas Copper Steel Condensate Refrigerant Hangers Valves Piping
-          Insulation
+          CODE 6000 - Gas, Copper, Steel Condensate, Refrigerant, Hangers, Valves, Piping, Insulation, Equipment Connection
         </h5>
       </div>
 

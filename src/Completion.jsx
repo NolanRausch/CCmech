@@ -242,7 +242,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
         </button>
 
         <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
-          Code 7000 - DDC Controls, Refrigerant, TBB Smoke Detectors, Disconnects
+          Code 7000 - DDC Controls, Refrigerant, TAB Smoke Detectors, Disconnects
         </h5>
       </div>
 

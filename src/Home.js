@@ -22,33 +22,287 @@ import Labor5 from "./Labor5";
 import Labor6 from "./Labor6";
 import Labor7 from "./Labor7";
 
-function Home() {
-  // ✅ simple home screen toggle
-  const [showHomeScreen, setShowHomeScreen] = useState(true);
+const TOTALS_COLS = "360px 120px 180px";
 
-  // ✅ Editable tax rate (default 7%)
+function TotalsRow({
+  label,
+  hours = "",
+  total = "",
+  strong = false,
+  muted = false,
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: TOTALS_COLS,
+        columnGap: 14,
+        alignItems: "baseline",
+        padding: "3px 0",
+        fontSize: 12,
+        lineHeight: 1.35,
+        opacity: muted ? 0.75 : 1,
+      }}
+    >
+      <div style={{ fontWeight: strong ? 700 : 400 }}>{label}</div>
+      <div
+        style={{
+          textAlign: "right",
+          fontVariantNumeric: "tabular-nums",
+          whiteSpace: "nowrap",
+          opacity: hours ? 0.9 : 0.4,
+        }}
+      >
+        {hours}
+      </div>
+      <div
+        style={{
+          textAlign: "right",
+          fontWeight: strong ? 800 : 600,
+          fontVariantNumeric: "tabular-nums",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {total}
+      </div>
+    </div>
+  );
+}
+
+function TotalsAdderRow({
+  checked,
+  onChange,
+  label,
+  hours = "",
+  total = "",
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: TOTALS_COLS,
+        columnGap: 14,
+        alignItems: "center",
+        padding: "3px 0",
+        fontSize: 12,
+        lineHeight: 1.35,
+      }}
+    >
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          margin: 0,
+          cursor: "pointer",
+        }}
+      >
+        <input type="checkbox" checked={checked} onChange={onChange} />
+        <span>{label}</span>
+      </label>
+
+      <div
+        style={{
+          textAlign: "right",
+          fontVariantNumeric: "tabular-nums",
+          whiteSpace: "nowrap",
+          opacity: hours ? 0.9 : 0.4,
+        }}
+      >
+        {hours}
+      </div>
+
+      <div
+        style={{
+          textAlign: "right",
+          fontWeight: 600,
+          fontVariantNumeric: "tabular-nums",
+          whiteSpace: "nowrap",
+          opacity: checked ? 1 : 0.45,
+        }}
+      >
+        {total}
+      </div>
+    </div>
+  );
+}
+
+function TotalsDriveTimeRow({
+  checked,
+  onChange,
+  value,
+  onValueChange,
+  total = "",
+  formulaHours = 0,
+  laborHoursTotal = 0,
+  hoursInWorkWeek = 40,
+}) {
+  const distanceValue = Number(value) || 0;
+  const denominator = Number(hoursInWorkWeek) - distanceValue;
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: TOTALS_COLS,
+        columnGap: 14,
+        alignItems: "start",
+        padding: "3px 0",
+        fontSize: 12,
+        lineHeight: 1.35,
+      }}
+    >
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          margin: 0,
+          cursor: "pointer",
+          paddingTop: 6,
+        }}
+      >
+        <input type="checkbox" checked={checked} onChange={onChange} />
+        <span>Drive Time</span>
+      </label>
+
+      <div style={{ textAlign: "right" }}>
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          value={value}
+          onChange={onValueChange}
+          style={{ width: 100, textAlign: "right" }}
+        />
+
+        <div
+          style={{
+            marginTop: 4,
+            fontSize: 11,
+            color: "#666",
+            whiteSpace: "normal",
+          }}
+        >
+          {denominator > 0
+            ? `(${Number(laborHoursTotal || 0).toFixed(2)} / (${Number(
+                hoursInWorkWeek || 0
+              ).toFixed(2)} - ${distanceValue.toFixed(2)})) × ${distanceValue.toFixed(
+                2
+              )} = ${Number(formulaHours || 0).toFixed(2)} hrs`
+            : "Hours in work week must be greater than drive time."}
+        </div>
+      </div>
+
+      <div
+        style={{
+          textAlign: "right",
+          fontWeight: 600,
+          fontVariantNumeric: "tabular-nums",
+          whiteSpace: "nowrap",
+          opacity: checked ? 1 : 0.45,
+          paddingTop: 6,
+        }}
+      >
+        {total}
+      </div>
+    </div>
+  );
+}
+
+function TotalsSellRow({
+  value,
+  onChange,
+  total = "",
+  romh = "",
+  laborHoursTotal,
+  pct,
+}) {
+  return (
+    <>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: TOTALS_COLS,
+          columnGap: 14,
+          alignItems: "center",
+          padding: "3px 0",
+          fontSize: 12,
+          lineHeight: 1.35,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            max="99.99"
+            value={Number((Number(value || 0) * 100).toFixed(2))}
+            onChange={onChange}
+            style={{ width: 90 }}
+          />
+          <span>Margin</span>
+        </div>
+
+        <div
+          style={{
+            textAlign: "right",
+            fontVariantNumeric: "tabular-nums",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {pct(value)}
+        </div>
+
+        <div
+          style={{
+            textAlign: "right",
+            fontWeight: 600,
+            fontVariantNumeric: "tabular-nums",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {total}
+        </div>
+      </div>
+
+      <TotalsRow
+        label="Return on Man Hours"
+        hours={laborHoursTotal ? `${laborHoursTotal.toFixed(2)} hrs` : "0.00 hrs"}
+        total={romh}
+        muted
+      />
+    </>
+  );
+}
+
+function TotalsSectionTitle({ children }) {
+  return (
+    <div
+      style={{ marginTop: 12, marginBottom: 6, fontSize: 12, fontWeight: 800 }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Home() {
+  const [showHomeScreen, setShowHomeScreen] = useState(true);
   const [taxRate, setTaxRate] = useState(0.07);
 
-  // ✅ Editable sell margin targets (defaults 25 / 30 / 35)
   const [sellMargins, setSellMargins] = useState({
     margin1: 0.25,
     margin2: 0.3,
     margin3: 0.35,
   });
 
-  // ✅ DEFAULT GUID
   const DEFAULT_REPORT_ID = "82e93dd1-7891-4f78-b06d-c5ba14c93c9d";
 
-  // ✅ Report Id (persisted)
   const [reportId, setReportId] = useState("");
   const [reportIdDraft, setReportIdDraft] = useState("");
-
   const [selected, setSelected] = useState(null);
+  const [viewMode, setViewMode] = useState("input");
 
-  // ✅ Toggle: "input" shows components, "totals" shows totals only
-  const [viewMode, setViewMode] = useState("input"); // "input" | "totals"
-
-  // ✅ Non-labor totals tracked here (store PRE-TAX subtotals)
   const [totalsBySection, setTotalsBySection] = useState({
     equipment: 0,
     demo: 0,
@@ -59,11 +313,6 @@ function Home() {
     completion: 0,
   });
 
-  /**
-   * ✅ Labor totals:
-   * Each labor section payload should look like:
-   *   { cost: number, hours: number, byType: [{type, cost, hours}] }
-   */
   const [laborSections, setLaborSections] = useState({
     labor1: { cost: 0, hours: 0, byType: [] },
     labor2: { cost: 0, hours: 0, byType: [] },
@@ -74,15 +323,13 @@ function Home() {
     labor7: { cost: 0, hours: 0, byType: [] },
   });
 
-  // ✅ Adders can be turned on/off
   const [enabledAdders, setEnabledAdders] = useState({
-    contingency: true,
     perDiem: true,
-    warranty: true,
-    consumables: true,
+    driveTime: false,
   });
 
-  // ✅ Status helpers (frontend text ↔ backend number)
+  const [driveTime, setDriveTime] = useState("");
+
   const STATUS_OPTIONS = useMemo(
     () => [
       { label: "Bid", value: 0 },
@@ -92,19 +339,14 @@ function Home() {
     []
   );
 
-  // ✅ which report group to show on home screen
-  const [reportGroupFilter, setReportGroupFilter] = useState("all"); // all | bids | active | lost | shared
-
-  // ✅ Azure signed-in user
+  const [reportGroupFilter, setReportGroupFilter] = useState("all");
   const [azureUser, setAzureUser] = useState(null);
   const [azureUserLoading, setAzureUserLoading] = useState(false);
 
-  // ✅ shared reports
   const [sharedReports, setSharedReports] = useState([]);
   const [sharedReportsLoading, setSharedReportsLoading] = useState(false);
   const [sharedReportsError, setSharedReportsError] = useState("");
 
-  // ✅ share dropdown
   const REPORT_USERNAMES_API =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/report-usernames";
   const [shareUsernames, setShareUsernames] = useState([]);
@@ -112,7 +354,6 @@ function Home() {
   const [shareOpenForId, setShareOpenForId] = useState("");
   const [shareSelectedUsername, setShareSelectedUsername] = useState("");
 
-  // ✅ ReportId helpers
   const isGuid = useCallback((s) => {
     return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
       String(s || "").trim().replace(/[{}]/g, "")
@@ -127,7 +368,6 @@ function Home() {
     [isGuid]
   );
 
-  // ✅ load persisted reportId on first render
   useEffect(() => {
     const saved = localStorage.getItem("ccms_report_id") || "";
     const normSaved = normalizeGuid(saved);
@@ -138,39 +378,20 @@ function Home() {
     setReportIdDraft(initial);
   }, [normalizeGuid]);
 
-  // ✅ expose globally
   useEffect(() => {
     if (reportId) localStorage.setItem("ccms_report_id", reportId);
     else localStorage.removeItem("ccms_report_id");
     window.__REPORT_ID__ = reportId || "";
   }, [reportId]);
 
-  const applyReportId = useCallback(() => {
-    const norm = normalizeGuid(reportIdDraft);
-    if (!norm) {
-      alert("Report ID must be a valid GUID.");
-      return;
-    }
-    setReportId(norm);
-  }, [reportIdDraft, normalizeGuid]);
-
-  const clearReportId = useCallback(() => {
-    const normDefault = normalizeGuid(DEFAULT_REPORT_ID);
-    setReportId(normDefault || "");
-    setReportIdDraft(normDefault || "");
-  }, [normalizeGuid]);
-
-  // ✅ make section setter idempotent
   const setSectionCost = useCallback((key, cost) => {
     const next = Number(cost) || 0;
-
     setTotalsBySection((prev) => {
       if ((prev[key] ?? 0) === next) return prev;
       return { ...prev, [key]: next };
     });
   }, []);
 
-  // ✅ accept either onTotalsChange(123) OR onTotalsChange({cost:123})
   const readCost = useCallback((t) => {
     if (typeof t === "number") return t;
     if (typeof t === "string") return Number(t);
@@ -180,7 +401,6 @@ function Home() {
     return 0;
   }, []);
 
-  // ✅ read labor payload coming from LaborViewer
   const readLaborPayload = useCallback((t) => {
     if (typeof t === "number" || typeof t === "string") {
       const cost = Number(t) || 0;
@@ -198,22 +418,18 @@ function Home() {
     return { cost: 0, hours: 0, byType: [] };
   }, []);
 
-  // ✅ make labor setter idempotent
   const setLaborSection = useCallback(
     (key, payload) => {
       const parsed = readLaborPayload(payload);
 
       setLaborSections((prev) => {
         const curr = prev[key];
-
         const same =
           (curr?.cost ?? 0) === parsed.cost &&
           (curr?.hours ?? 0) === parsed.hours &&
-          JSON.stringify(curr?.byType ?? []) ===
-            JSON.stringify(parsed.byType ?? []);
+          JSON.stringify(curr?.byType ?? []) === JSON.stringify(parsed.byType ?? []);
 
         if (same) return prev;
-
         return { ...prev, [key]: parsed };
       });
     },
@@ -240,14 +456,9 @@ function Home() {
   const loadAzureUser = useCallback(async () => {
     setAzureUserLoading(true);
     try {
-      const res = await fetch("/.auth/me", {
-        credentials: "include",
-      });
-
+      const res = await fetch("/.auth/me", { credentials: "include" });
       const data = await res.json().catch(() => null);
-      const principal = data?.clientPrincipal || null;
-
-      setAzureUser(principal);
+      setAzureUser(data?.clientPrincipal || null);
     } catch (e) {
       console.error("❌ loadAzureUser:", e);
       setAzureUser(null);
@@ -256,11 +467,11 @@ function Home() {
     }
   }, []);
 
-  const currentUserName = useMemo(() => {
-    return String(azureUser?.userDetails || "").trim();
-  }, [azureUser]);
+  const currentUserName = useMemo(
+    () => String(azureUser?.userDetails || "").trim(),
+    [azureUser]
+  );
 
-  // ✅ Better money formatting
   const money = useCallback((val) => {
     const n = Number(String(val ?? "").replace(/[^0-9.\-]/g, ""));
     const safe = isNaN(n) ? 0 : n;
@@ -272,7 +483,6 @@ function Home() {
     });
   }, []);
 
-  // ✅ helper: convert pre-tax -> with-tax using editable taxRate
   const withTax = useCallback(
     (n) => Number(n || 0) * (1 + (Number(taxRate) || 0)),
     [taxRate]
@@ -285,34 +495,24 @@ function Home() {
 
   const pct = useCallback((n) => `${(Number(n || 0) * 100).toFixed(2)}%`, []);
 
-  // ✅ Pre-tax subtotal across non-labor sections
-  const subTotal = useMemo(() => {
-    return Object.values(totalsBySection).reduce(
-      (sum, v) => sum + (Number(v) || 0),
-      0
-    );
-  }, [totalsBySection]);
+  const subTotal = useMemo(
+    () => Object.values(totalsBySection).reduce((sum, v) => sum + (Number(v) || 0), 0),
+    [totalsBySection]
+  );
 
-  // ✅ Non-labor totals (with tax)
   const subTotalWithTax = useMemo(() => withTax(subTotal), [subTotal, withTax]);
   const grandTotalWithTax = subTotalWithTax;
 
-  // ✅ Labor subtotal across all labor sections
-  const laborSubTotal = useMemo(() => {
-    return Object.values(laborSections).reduce(
-      (sum, v) => sum + (Number(v?.cost) || 0),
-      0
-    );
-  }, [laborSections]);
+  const laborSubTotal = useMemo(
+    () => Object.values(laborSections).reduce((sum, v) => sum + (Number(v?.cost) || 0), 0),
+    [laborSections]
+  );
 
-  const laborHoursTotal = useMemo(() => {
-    return Object.values(laborSections).reduce(
-      (sum, v) => sum + (Number(v?.hours) || 0),
-      0
-    );
-  }, [laborSections]);
+  const laborHoursTotal = useMemo(
+    () => Object.values(laborSections).reduce((sum, v) => sum + (Number(v?.hours) || 0), 0),
+    [laborSections]
+  );
 
-  // ✅ Combine labor by LaborType across all 7 labor sections
   const laborByType = useMemo(() => {
     const map = new Map();
 
@@ -322,7 +522,6 @@ function Home() {
         const type = String(row?.type ?? "").trim() || "Unspecified";
         const cost = Number(row?.cost) || 0;
         const hours = Number(row?.hours) || 0;
-
         const prev = map.get(type) || { type, cost: 0, hours: 0 };
         prev.cost += cost;
         prev.hours += hours;
@@ -333,46 +532,76 @@ function Home() {
     return Array.from(map.values()).sort((a, b) => b.cost - a.cost);
   }, [laborSections]);
 
-  // ✅ Labor totals (with tax)
+  const laborSectionRows = useMemo(() => {
+    const order = [
+      ["labor1", "Labor 1"],
+      ["labor2", "Labor 2"],
+      ["labor3", "Labor 3"],
+      ["labor4", "Labor 4"],
+      ["labor5", "Labor 5"],
+      ["labor6", "Labor 6"],
+      ["labor7", "Labor 7"],
+    ];
+
+    return order
+      .map(([key, label]) => {
+        const v = laborSections[key] || {};
+        return {
+          key,
+          label,
+          cost: Number(v.cost) || 0,
+          hours: Number(v.hours) || 0,
+        };
+      })
+      .filter((x) => x.cost !== 0 || x.hours !== 0);
+  }, [laborSections]);
+
   const laborSubTotalWithTax = useMemo(
     () => withTax(laborSubTotal),
     [laborSubTotal, withTax]
   );
   const laborGrandTotalWithTax = laborSubTotalWithTax;
 
-  // ✅ Combined totals
   const combinedGrandTotalWithTax = useMemo(
     () => grandTotalWithTax + laborGrandTotalWithTax,
     [grandTotalWithTax, laborGrandTotalWithTax]
   );
 
-  // ===== Adders / Allowances =====
   const contingencyRate = 0.02;
   const warrantyRate = 0.03;
   const consumablesRate = 0.025;
   const perDiemDaily = 25;
   const perDiemMult = 1.1;
+  const hoursInWorkWeek = 40;
 
   const contingency = useMemo(
     () => grandTotalWithTax * contingencyRate,
     [grandTotalWithTax]
   );
-
   const perDiem = useMemo(
     () => perDiemDaily * laborHoursTotal * perDiemMult,
     [laborHoursTotal]
   );
-
   const warranty = useMemo(
     () => grandTotalWithTax * warrantyRate,
     [grandTotalWithTax]
   );
-
   const consumables = useMemo(() => subTotal * consumablesRate, [subTotal]);
 
-  const contingencyIncluded = useMemo(
-    () => (enabledAdders.contingency ? contingency : 0),
-    [enabledAdders.contingency, contingency]
+  const driveTimeFormulaHours = useMemo(() => {
+    const distanceBothWays = Number(driveTime) || 0;
+    const denominator = hoursInWorkWeek - distanceBothWays;
+
+    if (distanceBothWays <= 0) return 0;
+    if (laborHoursTotal <= 0) return 0;
+    if (denominator <= 0) return 0;
+
+    return (laborHoursTotal / denominator) * distanceBothWays;
+  }, [driveTime, laborHoursTotal]);
+
+  const driveTimeIncluded = useMemo(
+    () => (enabledAdders.driveTime ? driveTimeFormulaHours : 0),
+    [enabledAdders.driveTime, driveTimeFormulaHours]
   );
 
   const perDiemIncluded = useMemo(
@@ -380,28 +609,9 @@ function Home() {
     [enabledAdders.perDiem, perDiem]
   );
 
-  const warrantyIncluded = useMemo(
-    () => (enabledAdders.warranty ? warranty : 0),
-    [enabledAdders.warranty, warranty]
-  );
-
-  const consumablesIncluded = useMemo(
-    () => (enabledAdders.consumables ? consumables : 0),
-    [enabledAdders.consumables, consumables]
-  );
-
   const addersTotal = useMemo(
-    () =>
-      contingencyIncluded +
-      perDiemIncluded +
-      warrantyIncluded +
-      consumablesIncluded,
-    [
-      contingencyIncluded,
-      perDiemIncluded,
-      warrantyIncluded,
-      consumablesIncluded,
-    ]
+    () => contingency + perDiemIncluded + warranty + consumables + driveTimeIncluded,
+    [contingency, perDiemIncluded, warranty, consumables, driveTimeIncluded]
   );
 
   const combinedWithAdders = useMemo(
@@ -413,6 +623,69 @@ function Home() {
     () => grandTotalWithTax + addersTotal,
     [grandTotalWithTax, addersTotal]
   );
+
+  const premiumTier1 = useMemo(() => {
+    if (combinedWithAdders < 100000) {
+      return Math.round(combinedWithAdders * 12.96) / 1000;
+    }
+    return 1296;
+  }, [combinedWithAdders]);
+
+  const premiumTier2 = useMemo(() => {
+    if (combinedWithAdders <= 100000) return 0;
+    if (combinedWithAdders < 500000) {
+      return Math.round((combinedWithAdders - 100000) * 12.96) / 1000;
+    }
+    return 5184;
+  }, [combinedWithAdders]);
+
+  const premiumTier3 = useMemo(() => {
+    if (combinedWithAdders <= 500000) return 0;
+    if (combinedWithAdders < 2500000) {
+      return Math.round((combinedWithAdders - 500000) * 7.83) / 1000;
+    }
+    return 15660;
+  }, [combinedWithAdders]);
+
+  const premiumTier4 = useMemo(() => {
+    if (combinedWithAdders <= 2500000) return 0;
+    if (combinedWithAdders < 5000000) {
+      return Math.round((combinedWithAdders - 2500000) * 6.21) / 1000;
+    }
+    return Math.round(2500000 * 6.21) / 1000;
+  }, [combinedWithAdders]);
+
+  const premiumTier5 = useMemo(() => {
+    if (combinedWithAdders <= 5000000) return 0;
+    if (combinedWithAdders < 7500000) {
+      return Math.round((combinedWithAdders - 5000000) * 5.67) / 1000;
+    }
+    return Math.round(2500000 * 5.67) / 1000;
+  }, [combinedWithAdders]);
+
+  const premiumTier6 = useMemo(() => {
+    if (combinedWithAdders <= 7500000) return 0;
+    return Math.round((combinedWithAdders - 7500000) * 5.8) / 1000;
+  }, [combinedWithAdders]);
+
+  const totalPremium = useMemo(() => {
+    if (combinedWithAdders < 100000) return premiumTier1;
+    if (combinedWithAdders < 500000) return premiumTier1 + premiumTier2;
+    if (combinedWithAdders < 2500000) return premiumTier1 + premiumTier2 + premiumTier3;
+    if (combinedWithAdders < 5000000)
+      return premiumTier1 + premiumTier2 + premiumTier3 + premiumTier4;
+    if (combinedWithAdders < 7500000)
+      return premiumTier1 + premiumTier2 + premiumTier3 + premiumTier4 + premiumTier5;
+    return premiumTier1 + premiumTier2 + premiumTier3 + premiumTier4 + premiumTier5 + premiumTier6;
+  }, [
+    combinedWithAdders,
+    premiumTier1,
+    premiumTier2,
+    premiumTier3,
+    premiumTier4,
+    premiumTier5,
+    premiumTier6,
+  ]);
 
   const margin1Value = useMemo(() => {
     const m = Number(sellMargins.margin1) || 0;
@@ -429,7 +702,6 @@ function Home() {
     return m >= 1 ? 0 : combinedWithAdders / (1 - m);
   }, [combinedWithAdders, sellMargins.margin3]);
 
-  // ✅ Return on man hours
   const romh1 = useMemo(() => {
     if (!laborHoursTotal) return 0;
     return (margin1Value - combinedWithAdders) / laborHoursTotal;
@@ -445,19 +717,15 @@ function Home() {
     return (margin3Value - combinedWithAdders) / laborHoursTotal;
   }, [margin3Value, combinedWithAdders, laborHoursTotal]);
 
-  // ============================================================
-  // ✅ HOME REPORTS CRUD
-  // ============================================================
   const REPORTS_API =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/reports";
-
   const SHARED_REPORTS_API =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/reports/shared";
 
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError, setReportsError] = useState("");
-  const [reportSortBy, setReportSortBy] = useState("dateDesc"); // dateDesc | dateAsc | nameAsc | nameDesc
+  const [reportSortBy, setReportSortBy] = useState("dateDesc");
 
   const blankReport = useMemo(
     () => ({
@@ -483,7 +751,6 @@ function Home() {
       const res = await fetch(REPORTS_API);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-
       const list = Array.isArray(data)
         ? data
         : Array.isArray(data?.recordset)
@@ -497,7 +764,7 @@ function Home() {
     } finally {
       setReportsLoading(false);
     }
-  }, [REPORTS_API]);
+  }, []);
 
   const loadSharedReports = useCallback(async () => {
     if (!currentUserName) {
@@ -515,7 +782,6 @@ function Home() {
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-
       const list = Array.isArray(data)
         ? data
         : Array.isArray(data?.recordset)
@@ -529,21 +795,18 @@ function Home() {
     } finally {
       setSharedReportsLoading(false);
     }
-  }, [SHARED_REPORTS_API, currentUserName]);
+  }, [currentUserName]);
 
   const loadShareUsernames = useCallback(async () => {
     setShareUsernamesLoading(true);
     try {
       const res = await fetch(REPORT_USERNAMES_API);
       const data = await res.json().catch(() => ([]));
-
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
       const list = Array.isArray(data) ? data : [];
       setShareUsernames(
-        list
-          .map((x) => String(x?.Username || "").trim())
-          .filter(Boolean)
+        list.map((x) => String(x?.Username || "").trim()).filter(Boolean)
       );
     } catch (e) {
       console.error("❌ loadShareUsernames:", e);
@@ -551,7 +814,7 @@ function Home() {
     } finally {
       setShareUsernamesLoading(false);
     }
-  }, [REPORT_USERNAMES_API]);
+  }, []);
 
   useEffect(() => {
     if (showHomeScreen) {
@@ -574,7 +837,6 @@ function Home() {
 
   const startEditReport = useCallback((r) => {
     const id = String(r?.ReportId || r?.reportId || r?.id || "").trim();
-
     setEditingId(id);
 
     const isoDate = (() => {
@@ -633,10 +895,9 @@ function Home() {
       const url = isEdit
         ? `${REPORTS_API}/${encodeURIComponent(editingId)}`
         : REPORTS_API;
-      const method = isEdit ? "PUT" : "POST";
 
       const res = await fetch(url, {
-        method,
+        method: isEdit ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -652,21 +913,12 @@ function Home() {
       console.error("❌ saveReport:", e);
       alert("❌ Save failed: " + (e.message || e));
     }
-  }, [
-    REPORTS_API,
-    editingId,
-    reportDraft,
-    loadReports,
-    loadSharedReports,
-    startNewReport,
-    currentUserName,
-  ]);
+  }, [editingId, reportDraft, currentUserName, loadReports, loadSharedReports, startNewReport]);
 
   const deleteReport = useCallback(
     async (id) => {
       const rid = String(id || "").trim();
       if (!rid) return;
-
       if (!window.confirm("Delete this report?")) return;
 
       try {
@@ -684,13 +936,12 @@ function Home() {
         alert("❌ Delete failed: " + (e.message || e));
       }
     },
-    [REPORTS_API, loadReports, loadSharedReports, editingId, startNewReport]
+    [editingId, loadReports, loadSharedReports, startNewReport]
   );
 
   const shareReport = useCallback((id) => {
     const rid = String(id || "").trim();
     if (!rid) return;
-
     setShareOpenForId(rid);
     setShareSelectedUsername("");
   }, []);
@@ -722,7 +973,7 @@ function Home() {
         alert("❌ Share failed: " + (e.message || e));
       }
     },
-    [SHARED_REPORTS_API, shareSelectedUsername, loadSharedReports]
+    [shareSelectedUsername, loadSharedReports]
   );
 
   const openReportFromRow = useCallback(
@@ -755,7 +1006,6 @@ function Home() {
   const sortReports = useCallback(
     (list) => {
       const copy = [...list];
-
       copy.sort((a, b) => {
         const aName = String(a?.ReportName ?? "").toLowerCase();
         const bName = String(b?.ReportName ?? "").toLowerCase();
@@ -774,7 +1024,6 @@ function Home() {
             return bDate - aDate || aName.localeCompare(bName);
         }
       });
-
       return copy;
     },
     [parseDateValue, reportSortBy]
@@ -782,7 +1031,6 @@ function Home() {
 
   const visibleReports = useMemo(() => {
     if (!currentUserName) return reports;
-
     return reports.filter(
       (r) =>
         String(r?.CreatedBy || "").trim().toLowerCase() ===
@@ -809,9 +1057,7 @@ function Home() {
     };
   }, [visibleReports, sortReports]);
 
-  const sharedReportsSorted = useMemo(() => {
-    return sortReports(sharedReports);
-  }, [sharedReports, sortReports]);
+  const sharedReportsSorted = useMemo(() => sortReports(sharedReports), [sharedReports, sortReports]);
 
   const currentReportGroup = useMemo(() => {
     if (reportGroupFilter === "active") {
@@ -824,11 +1070,7 @@ function Home() {
       return { title: "Bid Jobs", rows: groupedReports.bids, isShared: false };
     }
     if (reportGroupFilter === "shared") {
-      return {
-        title: "Shared With Me",
-        rows: sharedReportsSorted,
-        isShared: true,
-      };
+      return { title: "Shared With Me", rows: sharedReportsSorted, isShared: true };
     }
 
     return {
@@ -840,7 +1082,7 @@ function Home() {
       ]),
       isShared: false,
     };
-  }, [groupedReports, reportGroupFilter, sortReports, sharedReportsSorted]);
+  }, [groupedReports, reportGroupFilter, sharedReportsSorted, sortReports]);
 
   if (selected === 1000) {
     return (
@@ -852,444 +1094,8 @@ function Home() {
     );
   }
 
-  const handleClearAll = async () => {
-    if (!reportId) {
-      alert("Set a Report ID first.");
-      return;
-    }
-    if (
-      !window.confirm(
-        "Are you sure you want to delete ALL equipment for this report?"
-      )
-    )
-      return;
-
-    try {
-      const res = await fetch(
-        `https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/equipment/clear?reportId=${encodeURIComponent(
-          reportId
-        )}`,
-        { method: "DELETE", headers: { "x-report-id": reportId } }
-      );
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(
-          data.error || `Failed to clear table (HTTP ${res.status})`
-        );
-
-      console.log("✅ Cleared:", data);
-      alert("✅ All equipment deleted for this report");
-    } catch (err) {
-      console.error("❌ Clear failed:", err);
-      alert("❌ Error clearing table: " + (err.message || err));
-    }
-  };
-
-  const TotalsOnly = () => {
-    const COLS = "360px 120px 180px";
-
-    const Row = ({
-      label,
-      hours = "",
-      total = "",
-      strong = false,
-      muted = false,
-    }) => (
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: COLS,
-          columnGap: 14,
-          alignItems: "baseline",
-          padding: "3px 0",
-          fontSize: 12,
-          lineHeight: 1.35,
-          opacity: muted ? 0.75 : 1,
-        }}
-      >
-        <div style={{ fontWeight: strong ? 700 : 400 }}>{label}</div>
-
-        <div
-          style={{
-            textAlign: "right",
-            fontVariantNumeric: "tabular-nums",
-            whiteSpace: "nowrap",
-            opacity: hours ? 0.9 : 0.4,
-          }}
-        >
-          {hours}
-        </div>
-
-        <div
-          style={{
-            textAlign: "right",
-            fontWeight: strong ? 800 : 600,
-            fontVariantNumeric: "tabular-nums",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {total}
-        </div>
-      </div>
-    );
-
-    const AdderRow = ({
-      checked,
-      onChange,
-      label,
-      hours = "",
-      total = "",
-    }) => (
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: COLS,
-          columnGap: 14,
-          alignItems: "center",
-          padding: "3px 0",
-          fontSize: 12,
-          lineHeight: 1.35,
-        }}
-      >
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            margin: 0,
-            cursor: "pointer",
-          }}
-        >
-          <input type="checkbox" checked={checked} onChange={onChange} />
-          <span>{label}</span>
-        </label>
-
-        <div
-          style={{
-            textAlign: "right",
-            fontVariantNumeric: "tabular-nums",
-            whiteSpace: "nowrap",
-            opacity: hours ? 0.9 : 0.4,
-          }}
-        >
-          {hours}
-        </div>
-
-        <div
-          style={{
-            textAlign: "right",
-            fontWeight: 600,
-            fontVariantNumeric: "tabular-nums",
-            whiteSpace: "nowrap",
-            opacity: checked ? 1 : 0.45,
-          }}
-        >
-          {total}
-        </div>
-      </div>
-    );
-
-    const SellRow = ({ value, onChange, total = "", romh = "" }) => (
-      <>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: COLS,
-            columnGap: 14,
-            alignItems: "center",
-            padding: "3px 0",
-            fontSize: 12,
-            lineHeight: 1.35,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              max="99.99"
-              value={Number((Number(value || 0) * 100).toFixed(2))}
-              onChange={onChange}
-              style={{ width: 90 }}
-            />
-            <span>Margin</span>
-          </div>
-
-          <div
-            style={{
-              textAlign: "right",
-              fontVariantNumeric: "tabular-nums",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {pct(value)}
-          </div>
-
-          <div
-            style={{
-              textAlign: "right",
-              fontWeight: 600,
-              fontVariantNumeric: "tabular-nums",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {total}
-          </div>
-        </div>
-
-        <Row
-          label="Return on Man Hours"
-          hours={laborHoursTotal ? `${laborHoursTotal.toFixed(2)} hrs` : "0.00 hrs"}
-          total={romh}
-          muted
-        />
-      </>
-    );
-
-    const SectionTitle = ({ children }) => (
-      <div
-        style={{ marginTop: 12, marginBottom: 6, fontSize: 12, fontWeight: 800 }}
-      >
-        {children}
-      </div>
-    );
-
-    const laborSectionRows = useMemo(() => {
-      const order = [
-        ["labor1", "Labor 1"],
-        ["labor2", "Labor 2"],
-        ["labor3", "Labor 3"],
-        ["labor4", "Labor 4"],
-        ["labor5", "Labor 5"],
-        ["labor6", "Labor 6"],
-        ["labor7", "Labor 7"],
-      ];
-
-      return order
-        .map(([key, label]) => {
-          const v = laborSections[key] || {};
-          const cost = Number(v.cost) || 0;
-          const hours = Number(v.hours) || 0;
-          return { key, label, cost, hours };
-        })
-        .filter((x) => x.cost !== 0 || x.hours !== 0);
-    }, [laborSections]);
-
-    return (
-      <div style={{ width: "100%", display: "block", textAlign: "left" }}>
-        <div className="d-flex justify-content-between align-items-center">
-          <h5 className="mb-0">Totals</h5>
-
-          <div className="d-flex gap-2">
-            <button
-              className="btn btn-sm btn-outline-secondary"
-              onClick={() => setViewMode("input")}
-              title="Go back to inputs"
-            >
-              Back to Inputs
-            </button>
-          </div>
-        </div>
-
-        <div
-          style={{
-            marginTop: 10,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            fontSize: 12,
-          }}
-        >
-          <span style={{ fontWeight: 700 }}>Tax %:</span>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            max="100"
-            value={Number((taxRate * 100).toFixed(2))}
-            onChange={(e) => {
-              const pctNum = Number(e.target.value);
-              const next = Number.isFinite(pctNum)
-                ? Math.max(0, pctNum) / 100
-                : 0;
-              setTaxRate(next);
-            }}
-            style={{ width: 90 }}
-          />
-          <span className="text-muted">(currently {pct(taxRate)})</span>
-        </div>
-
-        <div style={{ marginTop: 12, width: "fit-content" }}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: COLS,
-              columnGap: 14,
-              fontSize: 12,
-              fontWeight: 700,
-              opacity: 0.75,
-              paddingBottom: 6,
-            }}
-          >
-            <div>Label</div>
-            <div style={{ textAlign: "right" }}>Hours / %</div>
-            <div style={{ textAlign: "right" }}>Total (included)</div>
-          </div>
-
-          <SectionTitle>Non-Labor</SectionTitle>
-
-          {Object.entries(totalsBySection).map(([k, v]) => (
-            <Row
-              key={k}
-              label={labelForSection(k)}
-              hours={pct(taxRate)}
-              total={money(withTax(v))}
-            />
-          ))}
-
-          <Row
-            label="Non-Labor Subtotal"
-            hours={pct(taxRate)}
-            total={money(subTotalWithTax)}
-            strong
-          />
-
-          <SectionTitle>Labor </SectionTitle>
-
-          {laborByType.length > 0 ? (
-            laborByType.map((t) => (
-              <Row
-                key={t.type}
-                label={t.type}
-                hours={`${Number(t.hours || 0).toFixed(2)} hrs`}
-                total={money(withTax(t.cost))}
-              />
-            ))
-          ) : laborSectionRows.length > 0 ? (
-            laborSectionRows.map((x) => (
-              <Row
-                key={x.key}
-                label={x.label}
-                hours={x.hours ? `${x.hours.toFixed(2)} hrs` : ""}
-                total={money(withTax(x.cost))}
-              />
-            ))
-          ) : (
-            <Row label="No labor totals yet." hours="" total="" muted />
-          )}
-
-          <Row
-            label="Labor Subtotal"
-            hours={`${laborHoursTotal.toFixed(2)} hrs`}
-            total={money(laborSubTotalWithTax)}
-            strong
-          />
-
-          <SectionTitle>Adders</SectionTitle>
-
-          <AdderRow
-            checked={enabledAdders.contingency}
-            onChange={() => toggleAdder("contingency")}
-            label="Contingency"
-            hours={pct(contingencyRate)}
-            total={money(contingencyIncluded)}
-          />
-
-          <AdderRow
-            checked={enabledAdders.perDiem}
-            onChange={() => toggleAdder("perDiem")}
-            label="Per Diem"
-            hours={`${laborHoursTotal.toFixed(2)} hrs`}
-            total={money(perDiemIncluded)}
-          />
-
-          <AdderRow
-            checked={enabledAdders.warranty}
-            onChange={() => toggleAdder("warranty")}
-            label="Warranty"
-            hours={pct(warrantyRate)}
-            total={money(warrantyIncluded)}
-          />
-
-          <AdderRow
-            checked={enabledAdders.consumables}
-            onChange={() => toggleAdder("consumables")}
-            label="Consumables"
-            hours={pct(consumablesRate)}
-            total={money(consumablesIncluded)}
-          />
-
-          <Row label="Adders Total" hours="" total={money(addersTotal)} strong />
-
-          <Row
-            label="Non-Labor Grand Total + Adders"
-            hours=""
-            total={money(nonLaborWithAdders)}
-            strong
-          />
-
-          <Row
-            label="Combined Grand Total + Adders"
-            hours=""
-            total={money(combinedWithAdders)}
-            strong
-          />
-
-          <SectionTitle>Sell Price Targets</SectionTitle>
-
-          <SellRow
-            value={sellMargins.margin1}
-            onChange={(e) => setSellMargin("margin1", e.target.value)}
-            total={money(margin1Value)}
-            romh={money(romh1)}
-          />
-          <SellRow
-            value={sellMargins.margin2}
-            onChange={(e) => setSellMargin("margin2", e.target.value)}
-            total={money(margin2Value)}
-            romh={money(romh2)}
-          />
-          <SellRow
-            value={sellMargins.margin3}
-            onChange={(e) => setSellMargin("margin3", e.target.value)}
-            total={money(margin3Value)}
-            romh={money(romh3)}
-          />
-        </div>
-      </div>
-    );
-  };
-
-  const InputsOnly = () => (
-    <div className="mb-3">
-      <div className="text-center mb-2">
-        <h1 className="m-0">Capital City</h1>
-      </div>
-
-      <div className="d-flex justify-content-center gap-2">
-        <button
-          className="btn btn-primary btn-sm"
-          onClick={() => setShowHomeScreen(true)}
-        >
-          Back To Reports
-        </button>
-
-        <button
-          className="btn btn-primary btn-sm"
-          onClick={() => setViewMode("totals")}
-          disabled={!reportId}
-          title={!reportId ? "Set Report ID first" : ""}
-        >
-          View Totals
-        </button>
-      </div>
-    </div>
-  );
-
   const ReportsTable = ({ title, rows, isShared = false }) => {
     if (!rows.length) return null;
-
     const showNotes = title === "Lost Jobs";
 
     return (
@@ -1328,7 +1134,6 @@ function Home() {
                         <button
                           className="btn btn-sm btn-primary"
                           onClick={() => openReportFromRow(rid)}
-                          title="Set ReportId and open inputs"
                         >
                           Open
                         </button>
@@ -1359,17 +1164,12 @@ function Home() {
 
                       {!isShared && isShareOpen && (
                         <div className="mt-2 d-flex justify-content-end">
-                          <div
-                            className="border rounded p-2 bg-white"
-                            style={{ minWidth: 260 }}
-                          >
+                          <div className="border rounded p-2 bg-white" style={{ minWidth: 260 }}>
                             <input
                               className="form-control form-control-sm"
                               list={`share-usernames-${rid}`}
                               value={shareSelectedUsername}
-                              onChange={(e) =>
-                                setShareSelectedUsername(e.target.value)
-                              }
+                              onChange={(e) => setShareSelectedUsername(e.target.value)}
                               placeholder={
                                 shareUsernamesLoading
                                   ? "Loading usernames..."
@@ -1414,6 +1214,32 @@ function Home() {
       </div>
     );
   };
+
+  const InputsOnly = () => (
+    <div className="mb-3">
+      <div className="text-center mb-2">
+        <h1 className="m-0">Capital City</h1>
+      </div>
+
+      <div className="d-flex justify-content-center gap-2">
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={() => setShowHomeScreen(true)}
+        >
+          Back To Reports
+        </button>
+
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={() => setViewMode("totals")}
+          disabled={!reportId}
+          title={!reportId ? "Set Report ID first" : ""}
+        >
+          View Totals
+        </button>
+      </div>
+    </div>
+  );
 
   if (showHomeScreen) {
     return (
@@ -1509,10 +1335,7 @@ function Home() {
                     className="form-control"
                     value={reportDraft.CustomerName}
                     onChange={(e) =>
-                      setReportDraft((p) => ({
-                        ...p,
-                        CustomerName: e.target.value,
-                      }))
+                      setReportDraft((p) => ({ ...p, CustomerName: e.target.value }))
                     }
                     placeholder="Customer"
                   />
@@ -1585,10 +1408,7 @@ function Home() {
                       rows={3}
                       value={reportDraft.Notes}
                       onChange={(e) =>
-                        setReportDraft((p) => ({
-                          ...p,
-                          Notes: e.target.value,
-                        }))
+                        setReportDraft((p) => ({ ...p, Notes: e.target.value }))
                       }
                       placeholder="Notes for lost job"
                     />
@@ -1636,7 +1456,237 @@ function Home() {
       {viewMode === "totals" ? (
         <>
           <h1>Capital City</h1>
-          <TotalsOnly />
+
+          <div style={{ width: "100%", display: "block", textAlign: "left" }}>
+            <div className="d-flex justify-content-between align-items-center">
+              <h5 className="mb-0">Totals</h5>
+
+              <div className="d-flex gap-2">
+                <button
+                  className="btn btn-sm btn-outline-secondary"
+                  onClick={() => setViewMode("input")}
+                  title="Go back to inputs"
+                >
+                  Back to Inputs
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: 10,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                fontSize: 12,
+              }}
+            >
+              <span style={{ fontWeight: 700 }}>Tax %:</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                value={Number((taxRate * 100).toFixed(2))}
+                onChange={(e) => {
+                  const pctNum = Number(e.target.value);
+                  const next = Number.isFinite(pctNum)
+                    ? Math.max(0, pctNum) / 100
+                    : 0;
+                  setTaxRate(next);
+                }}
+                style={{ width: 90 }}
+              />
+              <span className="text-muted">(currently {pct(taxRate)})</span>
+            </div>
+
+            <div style={{ marginTop: 12, width: "fit-content" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: TOTALS_COLS,
+                  columnGap: 14,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  opacity: 0.75,
+                  paddingBottom: 6,
+                }}
+              >
+                <div>Label</div>
+                <div style={{ textAlign: "right" }}>Hours / %</div>
+                <div style={{ textAlign: "right" }}>Total (included)</div>
+              </div>
+
+              <TotalsSectionTitle>Non-Labor</TotalsSectionTitle>
+
+              {Object.entries(totalsBySection).map(([k, v]) => (
+                <TotalsRow
+                  key={k}
+                  label={labelForSection(k)}
+                  hours={pct(taxRate)}
+                  total={money(withTax(v))}
+                />
+              ))}
+
+              <TotalsRow
+                label="Non-Labor Subtotal"
+                hours={pct(taxRate)}
+                total={money(subTotalWithTax)}
+                strong
+              />
+
+              <TotalsSectionTitle>Labor</TotalsSectionTitle>
+
+              {laborByType.length > 0 ? (
+                laborByType.map((t) => (
+                  <TotalsRow
+                    key={t.type}
+                    label={t.type}
+                    hours={`${Number(t.hours || 0).toFixed(2)} hrs`}
+                    total={money(withTax(t.cost))}
+                  />
+                ))
+              ) : laborSectionRows.length > 0 ? (
+                laborSectionRows.map((x) => (
+                  <TotalsRow
+                    key={x.key}
+                    label={x.label}
+                    hours={x.hours ? `${x.hours.toFixed(2)} hrs` : ""}
+                    total={money(withTax(x.cost))}
+                  />
+                ))
+              ) : (
+                <TotalsRow label="No labor totals yet." hours="" total="" muted />
+              )}
+
+              <TotalsRow
+                label="Labor Subtotal"
+                hours={`${laborHoursTotal.toFixed(2)} hrs`}
+                total={money(laborSubTotalWithTax)}
+                strong
+              />
+
+              <TotalsSectionTitle>Adders</TotalsSectionTitle>
+
+              <TotalsRow
+                label="Contingency"
+                hours={pct(contingencyRate)}
+                total={money(contingency)}
+              />
+
+              <TotalsAdderRow
+                checked={enabledAdders.perDiem}
+                onChange={() => toggleAdder("perDiem")}
+                label="Per Diem"
+                hours={`${laborHoursTotal.toFixed(2)} hrs`}
+                total={money(perDiemIncluded)}
+              />
+
+              <TotalsRow
+                label="Warranty"
+                hours={pct(warrantyRate)}
+                total={money(warranty)}
+              />
+
+              <TotalsRow
+                label="Consumables"
+                hours={pct(consumablesRate)}
+                total={money(consumables)}
+              />
+
+              <TotalsDriveTimeRow
+                checked={enabledAdders.driveTime}
+                onChange={() => toggleAdder("driveTime")}
+                value={driveTime}
+                onValueChange={(e) => setDriveTime(e.target.value)}
+                formulaHours={driveTimeFormulaHours}
+                laborHoursTotal={laborHoursTotal}
+                hoursInWorkWeek={hoursInWorkWeek}
+                total={money(driveTimeIncluded)}
+              />
+
+              <TotalsRow
+                label="Adders Total"
+                hours=""
+                total={money(addersTotal)}
+                strong
+              />
+
+              <TotalsRow
+                label="Non-Labor Grand Total + Adders"
+                hours=""
+                total={money(nonLaborWithAdders)}
+                strong
+              />
+
+              <TotalsRow
+                label="Combined Grand Total + Adders"
+                hours=""
+                total={money(combinedWithAdders)}
+                strong
+              />
+
+              <TotalsSectionTitle>Premium</TotalsSectionTitle>
+
+              <TotalsRow
+                label="Starting Grand Total + Adders"
+                hours=""
+                total={money(combinedWithAdders)}
+                strong
+              />
+
+              <TotalsRow label="Tier 1 Premium" total={money(premiumTier1)} />
+              {premiumTier2 > 0 && (
+                <TotalsRow label="Tier 2 Premium" total={money(premiumTier2)} />
+              )}
+              {premiumTier3 > 0 && (
+                <TotalsRow label="Tier 3 Premium" total={money(premiumTier3)} />
+              )}
+              {premiumTier4 > 0 && (
+                <TotalsRow label="Tier 4 Premium" total={money(premiumTier4)} />
+              )}
+              {premiumTier5 > 0 && (
+                <TotalsRow label="Tier 5 Premium" total={money(premiumTier5)} />
+              )}
+              {premiumTier6 > 0 && (
+                <TotalsRow label="Tier 6 Premium" total={money(premiumTier6)} />
+              )}
+
+              <TotalsRow
+                label="Total Premium"
+                hours=""
+                total={money(totalPremium)}
+                strong
+              />
+
+              <TotalsSectionTitle>Sell Price Targets</TotalsSectionTitle>
+
+              <TotalsSellRow
+                value={sellMargins.margin1}
+                onChange={(e) => setSellMargin("margin1", e.target.value)}
+                total={money(margin1Value)}
+                romh={money(romh1)}
+                laborHoursTotal={laborHoursTotal}
+                pct={pct}
+              />
+              <TotalsSellRow
+                value={sellMargins.margin2}
+                onChange={(e) => setSellMargin("margin2", e.target.value)}
+                total={money(margin2Value)}
+                romh={money(romh2)}
+                laborHoursTotal={laborHoursTotal}
+                pct={pct}
+              />
+              <TotalsSellRow
+                value={sellMargins.margin3}
+                onChange={(e) => setSellMargin("margin3", e.target.value)}
+                total={money(margin3Value)}
+                romh={money(romh3)}
+                laborHoursTotal={laborHoursTotal}
+                pct={pct}
+              />
+            </div>
+          </div>
         </>
       ) : (
         <>
