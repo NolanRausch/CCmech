@@ -19,6 +19,16 @@ const blankAlt = {
   alternateId: undefined,
 };
 
+const DESCRIPTION_OPTIONS = [
+  "RTU",
+  "Chiller",
+  "Boiler",
+  "Pump",
+  "Tower",
+  "VRF",
+  "Split",
+];
+
 // -------------------------
 // reportId helpers
 // -------------------------
@@ -43,6 +53,15 @@ function GridRow({
 }) {
   const handle = (field) => (e) =>
     onChange({ ...value, [field]: e.target.value });
+
+  const descriptionListId = useMemo(
+    () =>
+      `description-options-${String(label)
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-z0-9-_]/g, "")}`,
+    [label]
+  );
 
   return (
     <div className="card mb-3">
@@ -93,10 +112,16 @@ function GridRow({
                 <input
                   className="form-control"
                   type="text"
+                  list={descriptionListId}
                   value={value.description}
                   onChange={handle("description")}
-                  placeholder="e.g., 20x20 air filter"
+                  placeholder="Select or type description"
                 />
+                <datalist id={descriptionListId}>
+                  {DESCRIPTION_OPTIONS.map((option) => (
+                    <option key={option} value={option} />
+                  ))}
+                </datalist>
               </td>
 
               <td>
@@ -290,17 +315,17 @@ export default function BoxView1({ number, reportId: reportIdProp, onBack }) {
   };
 
   // ✅ fetchJson that records EVERY call (method/url/status)
-const fetchJson = async (url, opts = {}) => {
-  const headers = {
-    ...(opts.headers || {}),
-    "Content-Type": "application/json",
-    ...(reportId ? { "x-report-id": reportId } : {}),
-  };
+  const fetchJson = async (url, opts = {}) => {
+    const headers = {
+      ...(opts.headers || {}),
+      "Content-Type": "application/json",
+      ...(reportId ? { "x-report-id": reportId } : {}),
+    };
 
-  const res = await fetch(url, { ...opts, headers });
-  const data = await res.json().catch(() => ({}));
-  return { res, data };
-};
+    const res = await fetch(url, { ...opts, headers });
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
+  };
 
   useEffect(() => {
     async function loadPrimariesAndAlternates() {
@@ -314,7 +339,7 @@ const fetchJson = async (url, opts = {}) => {
 
       try {
         // reset call log for this load
-       // setCallLog([]);
+        // setCallLog([]);
 
         const { res, data } = await fetchJson(withReport(`${API_BASE}/equipment`), {
           method: "GET",
@@ -397,7 +422,7 @@ const fetchJson = async (url, opts = {}) => {
 
     try {
       // reset call log for this submit so popup shows submit calls
-    //  setCallLog([]);
+      //  setCallLog([]);
 
       for (const row of sections) {
         const primary = row?.[0];
@@ -478,17 +503,18 @@ const fetchJson = async (url, opts = {}) => {
   };
 
   // ✅ Home button submits, then shows popup of API calls (includes alternates)
- const handleHomeClick = async () => {
-  if (submitting) return;
+  const handleHomeClick = async () => {
+    if (submitting) return;
 
-  try {
-    setSubmitting(true);
-    const ok = await handleSubmit();
-    if (ok) onBack?.(); // go back immediately
-  } finally {
-    setSubmitting(false);
-  }
-};
+    try {
+      setSubmitting(true);
+      const ok = await handleSubmit();
+      if (ok) onBack?.(); // go back immediately
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="container py-4">
       {/* ✅ HOME BUTTON ON TOP */}
@@ -503,10 +529,9 @@ const fetchJson = async (url, opts = {}) => {
         </button>
 
         <div className="text-center flex-grow-1">
-           <div className="fw-semibold">Equipment Input</div>
+          <div className="fw-semibold">Equipment Input</div>
           <div className="text-muted small">Code 1000</div>
         </div>
-
 
         <div style={{ width: "90px" }} />
       </div>
@@ -536,9 +561,6 @@ const fetchJson = async (url, opts = {}) => {
           </div>
         </form>
       )}
-
-     
-      
     </div>
   );
 }

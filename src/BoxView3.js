@@ -7,8 +7,28 @@ const API_BASE =
 const blank = { description: "", supplier: "", cost: "", notes: "" };
 const blankAlt = { ...blank, used: false, isExistingAlt: false, alternateId: undefined };
 
+const DESCRIPTION_OPTIONS = [
+  "Rigging",
+  "Roofing",
+  "Pads",
+  "Cutting/Coring",
+  "Tool Rental",
+  "Construction",
+  "GC",
+  "Storage Container",
+];
+
 function GridRow({ label, value, onChange, showUsed = false, onRemove, removable = false }) {
   const handle = (field) => (e) => onChange({ ...value, [field]: e.target.value });
+
+  const descriptionListId = useMemo(
+    () =>
+      `description-options-${String(label)
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-z0-9-_]/g, "")}`,
+    [label]
+  );
 
   return (
     <div className="card mb-3">
@@ -54,10 +74,16 @@ function GridRow({ label, value, onChange, showUsed = false, onRemove, removable
                 <input
                   className="form-control"
                   type="text"
+                  list={descriptionListId}
                   value={value.description}
                   onChange={handle("description")}
-                  placeholder="e.g., 20x20 air filter"
+                  placeholder="Select or type description"
                 />
+                <datalist id={descriptionListId}>
+                  {DESCRIPTION_OPTIONS.map((option) => (
+                    <option key={option} value={option} />
+                  ))}
+                </datalist>
               </td>
               <td>
                 <input

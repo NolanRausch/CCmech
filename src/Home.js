@@ -329,6 +329,7 @@ function Home() {
   });
 
   const [driveTime, setDriveTime] = useState("");
+  const [premiumBaseInput, setPremiumBaseInput] = useState("");
 
   const STATUS_OPTIONS = useMemo(
     () => [
@@ -624,61 +625,66 @@ function Home() {
     [grandTotalWithTax, addersTotal]
   );
 
+  const premiumBaseAmount = useMemo(() => {
+    if (String(premiumBaseInput).trim() === "") return combinedWithAdders;
+    return Number(premiumBaseInput) || 0;
+  }, [premiumBaseInput, combinedWithAdders]);
+
   const premiumTier1 = useMemo(() => {
-    if (combinedWithAdders < 100000) {
-      return Math.round(combinedWithAdders * 12.96) / 1000;
+    if (premiumBaseAmount < 100000) {
+      return Math.round(premiumBaseAmount * 12.96) / 1000;
     }
     return 1296;
-  }, [combinedWithAdders]);
+  }, [premiumBaseAmount]);
 
   const premiumTier2 = useMemo(() => {
-    if (combinedWithAdders <= 100000) return 0;
-    if (combinedWithAdders < 500000) {
-      return Math.round((combinedWithAdders - 100000) * 12.96) / 1000;
+    if (premiumBaseAmount <= 100000) return 0;
+    if (premiumBaseAmount < 500000) {
+      return Math.round((premiumBaseAmount - 100000) * 12.96) / 1000;
     }
     return 5184;
-  }, [combinedWithAdders]);
+  }, [premiumBaseAmount]);
 
   const premiumTier3 = useMemo(() => {
-    if (combinedWithAdders <= 500000) return 0;
-    if (combinedWithAdders < 2500000) {
-      return Math.round((combinedWithAdders - 500000) * 7.83) / 1000;
+    if (premiumBaseAmount <= 500000) return 0;
+    if (premiumBaseAmount < 2500000) {
+      return Math.round((premiumBaseAmount - 500000) * 7.83) / 1000;
     }
     return 15660;
-  }, [combinedWithAdders]);
+  }, [premiumBaseAmount]);
 
   const premiumTier4 = useMemo(() => {
-    if (combinedWithAdders <= 2500000) return 0;
-    if (combinedWithAdders < 5000000) {
-      return Math.round((combinedWithAdders - 2500000) * 6.21) / 1000;
+    if (premiumBaseAmount <= 2500000) return 0;
+    if (premiumBaseAmount < 5000000) {
+      return Math.round((premiumBaseAmount - 2500000) * 6.21) / 1000;
     }
     return Math.round(2500000 * 6.21) / 1000;
-  }, [combinedWithAdders]);
+  }, [premiumBaseAmount]);
 
   const premiumTier5 = useMemo(() => {
-    if (combinedWithAdders <= 5000000) return 0;
-    if (combinedWithAdders < 7500000) {
-      return Math.round((combinedWithAdders - 5000000) * 5.67) / 1000;
+    if (premiumBaseAmount <= 5000000) return 0;
+    if (premiumBaseAmount < 7500000) {
+      return Math.round((premiumBaseAmount - 5000000) * 5.67) / 1000;
     }
     return Math.round(2500000 * 5.67) / 1000;
-  }, [combinedWithAdders]);
+  }, [premiumBaseAmount]);
 
   const premiumTier6 = useMemo(() => {
-    if (combinedWithAdders <= 7500000) return 0;
-    return Math.round((combinedWithAdders - 7500000) * 5.8) / 1000;
-  }, [combinedWithAdders]);
+    if (premiumBaseAmount <= 7500000) return 0;
+    return Math.round((premiumBaseAmount - 7500000) * 5.8) / 1000;
+  }, [premiumBaseAmount]);
 
   const totalPremium = useMemo(() => {
-    if (combinedWithAdders < 100000) return premiumTier1;
-    if (combinedWithAdders < 500000) return premiumTier1 + premiumTier2;
-    if (combinedWithAdders < 2500000) return premiumTier1 + premiumTier2 + premiumTier3;
-    if (combinedWithAdders < 5000000)
+    if (premiumBaseAmount < 100000) return premiumTier1;
+    if (premiumBaseAmount < 500000) return premiumTier1 + premiumTier2;
+    if (premiumBaseAmount < 2500000) return premiumTier1 + premiumTier2 + premiumTier3;
+    if (premiumBaseAmount < 5000000)
       return premiumTier1 + premiumTier2 + premiumTier3 + premiumTier4;
-    if (combinedWithAdders < 7500000)
+    if (premiumBaseAmount < 7500000)
       return premiumTier1 + premiumTier2 + premiumTier3 + premiumTier4 + premiumTier5;
     return premiumTier1 + premiumTier2 + premiumTier3 + premiumTier4 + premiumTier5 + premiumTier6;
   }, [
-    combinedWithAdders,
+    premiumBaseAmount,
     premiumTier1,
     premiumTier2,
     premiumTier3,
@@ -1057,7 +1063,10 @@ function Home() {
     };
   }, [visibleReports, sortReports]);
 
-  const sharedReportsSorted = useMemo(() => sortReports(sharedReports), [sharedReports, sortReports]);
+  const sharedReportsSorted = useMemo(
+    () => sortReports(sharedReports),
+    [sharedReports, sortReports]
+  );
 
   const currentReportGroup = useMemo(() => {
     if (reportGroupFilter === "active") {
@@ -1164,7 +1173,10 @@ function Home() {
 
                       {!isShared && isShareOpen && (
                         <div className="mt-2 d-flex justify-content-end">
-                          <div className="border rounded p-2 bg-white" style={{ minWidth: 260 }}>
+                          <div
+                            className="border rounded p-2 bg-white"
+                            style={{ minWidth: 260 }}
+                          >
                             <input
                               className="form-control form-control-sm"
                               list={`share-usernames-${rid}`}
@@ -1626,39 +1638,6 @@ function Home() {
                 strong
               />
 
-              <TotalsSectionTitle>Premium</TotalsSectionTitle>
-
-              <TotalsRow
-                label="Starting Grand Total + Adders"
-                hours=""
-                total={money(combinedWithAdders)}
-                strong
-              />
-
-              <TotalsRow label="Tier 1 Premium" total={money(premiumTier1)} />
-              {premiumTier2 > 0 && (
-                <TotalsRow label="Tier 2 Premium" total={money(premiumTier2)} />
-              )}
-              {premiumTier3 > 0 && (
-                <TotalsRow label="Tier 3 Premium" total={money(premiumTier3)} />
-              )}
-              {premiumTier4 > 0 && (
-                <TotalsRow label="Tier 4 Premium" total={money(premiumTier4)} />
-              )}
-              {premiumTier5 > 0 && (
-                <TotalsRow label="Tier 5 Premium" total={money(premiumTier5)} />
-              )}
-              {premiumTier6 > 0 && (
-                <TotalsRow label="Tier 6 Premium" total={money(premiumTier6)} />
-              )}
-
-              <TotalsRow
-                label="Total Premium"
-                hours=""
-                total={money(totalPremium)}
-                strong
-              />
-
               <TotalsSectionTitle>Sell Price Targets</TotalsSectionTitle>
 
               <TotalsSellRow
@@ -1684,6 +1663,67 @@ function Home() {
                 romh={money(romh3)}
                 laborHoursTotal={laborHoursTotal}
                 pct={pct}
+              />
+
+              <TotalsSectionTitle>Premium</TotalsSectionTitle>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: TOTALS_COLS,
+                  columnGap: 14,
+                  alignItems: "center",
+                  padding: "3px 0",
+                  fontSize: 12,
+                  lineHeight: 1.35,
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>Premium Starting Amount</div>
+                <div style={{ textAlign: "right" }}>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={premiumBaseInput}
+                    onChange={(e) => setPremiumBaseInput(e.target.value)}
+                    placeholder={String(combinedWithAdders.toFixed(2))}
+                    style={{ width: 120, textAlign: "right" }}
+                  />
+                </div>
+                <div
+                  style={{
+                    textAlign: "right",
+                    fontWeight: 800,
+                    fontVariantNumeric: "tabular-nums",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {money(premiumBaseAmount)}
+                </div>
+              </div>
+
+              <TotalsRow label="Tier 1 Premium" total={money(premiumTier1)} />
+              {premiumTier2 > 0 && (
+                <TotalsRow label="Tier 2 Premium" total={money(premiumTier2)} />
+              )}
+              {premiumTier3 > 0 && (
+                <TotalsRow label="Tier 3 Premium" total={money(premiumTier3)} />
+              )}
+              {premiumTier4 > 0 && (
+                <TotalsRow label="Tier 4 Premium" total={money(premiumTier4)} />
+              )}
+              {premiumTier5 > 0 && (
+                <TotalsRow label="Tier 5 Premium" total={money(premiumTier5)} />
+              )}
+              {premiumTier6 > 0 && (
+                <TotalsRow label="Tier 6 Premium" total={money(premiumTier6)} />
+              )}
+
+              <TotalsRow
+                label="Total Premium"
+                hours=""
+                total={money(totalPremium)}
+                strong
               />
             </div>
           </div>

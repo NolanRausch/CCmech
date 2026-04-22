@@ -12,6 +12,14 @@ const blankAlt = {
   alternateId: undefined,
 };
 
+const DESCRIPTION_OPTIONS = [
+  "DDC Control",
+  "Refrigerant",
+  "TAB",
+  "Smoke Detector",
+  "Disconnect",
+];
+
 // ---------- Reusable row ----------
 function GridRow({
   label,
@@ -22,6 +30,15 @@ function GridRow({
   removable = false,
 }) {
   const handle = (field) => (e) => onChange({ ...value, [field]: e.target.value });
+
+  const descriptionListId = useMemo(
+    () =>
+      `description-options-${String(label)
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-z0-9-_]/g, "")}`,
+    [label]
+  );
 
   return (
     <div className="card mb-3">
@@ -72,10 +89,16 @@ function GridRow({
                 <input
                   className="form-control"
                   type="text"
+                  list={descriptionListId}
                   value={value.description}
                   onChange={handle("description")}
-                  placeholder="e.g., 20x20 air filter"
+                  placeholder="Select or type description"
                 />
+                <datalist id={descriptionListId}>
+                  {DESCRIPTION_OPTIONS.map((option) => (
+                    <option key={option} value={option} />
+                  ))}
+                </datalist>
               </td>
               <td>
                 <input
@@ -560,20 +583,18 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
   return (
     <div className="container py-2">
       <div className="d-flex align-items-start justify-content-between mb-3">
-        
-          <button
-            type="button"
-            className="btn btn-dark"
-            onClick={handleSave}
-            disabled={saving}
-            title={saving ? "Saving..." : "Save and return to Home"}
-          >
-            {saving ? "Saving..." : "Save"}
-          </button>
-       
+        <button
+          type="button"
+          className="btn btn-dark"
+          onClick={handleSave}
+          disabled={saving}
+          title={saving ? "Saving..." : "Save and return to Home"}
+        >
+          {saving ? "Saving..." : "Save"}
+        </button>
 
         <div className="text-center flex-grow-1">
-           <div className="fw-semibold">Completion Input</div>
+          <div className="fw-semibold">Completion Input</div>
           <div className="text-muted small">Code 7000</div>
         </div>
 

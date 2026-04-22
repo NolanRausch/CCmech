@@ -19,6 +19,16 @@ const blankAlt = {
   alternateId: undefined,
 };
 
+const DESCRIPTION_OPTIONS = [
+  "Demolition",
+  "Delivery",
+  "Trucking",
+  "Fencing",
+  "Eng Fees",
+  "Refrigerant Recovery",
+  "Dumpster",
+];
+
 // -------------------------
 // reportId helpers
 // -------------------------
@@ -43,6 +53,15 @@ function GridRow({
 }) {
   const handle = (field) => (e) =>
     onChange({ ...value, [field]: e.target.value });
+
+  const descriptionListId = useMemo(
+    () =>
+      `description-options-${String(label)
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-z0-9-_]/g, "")}`,
+    [label]
+  );
 
   return (
     <div className="card mb-3">
@@ -93,10 +112,16 @@ function GridRow({
                 <input
                   className="form-control"
                   type="text"
+                  list={descriptionListId}
                   value={value.description}
                   onChange={handle("description")}
-                  placeholder="e.g., 20x20 air filter"
+                  placeholder="Select or type description"
                 />
+                <datalist id={descriptionListId}>
+                  {DESCRIPTION_OPTIONS.map((option) => (
+                    <option key={option} value={option} />
+                  ))}
+                </datalist>
               </td>
 
               <td>
@@ -572,15 +597,10 @@ export default function BoxView2({ number, reportId: reportIdProp, onBack }) {
         </button>
 
         <div className="text-center">
-          <h2 className="mb-0">Code {number}</h2>
-          <p className="mb-0 text-muted">Demo</p>
+          <h2 className="mb-0">Demo Input</h2>
+          <p className="mb-0 text-muted">Code {number}</p>
           <p className="mb-0 small text-muted">
-            Report:{" "}
-            {reportId ? (
-              <span className="font-monospace">{reportId}</span>
-            ) : (
-              <span className="text-danger">missing reportId</span>
-            )}
+           
           </p>
         </div>
 
