@@ -388,9 +388,11 @@ export default function BoxView1({ number, onBack, reportId: reportIdProp }) {
   const submitAll = useCallback(async () => {
     if (!reportId) throw new Error("Missing reportId (required).");
 
-    for (const row of sections) {
+    for (const [itemIndex, row] of sections.entries()) {
       const primary = row?.[0];
       if (!primary || isEmpty(primary)) continue;
+
+      const costCode = String(3001 + itemIndex);
 
       // Existing ERough
       if (primary.isExisting && primary.eRoughId) {
@@ -407,6 +409,7 @@ export default function BoxView1({ number, onBack, reportId: reportIdProp }) {
                 Description: String(primary.description ?? ""),
                 Supplier: String(primary.supplier ?? ""),
                 Cost: String(primary.cost ?? ""),
+                CostCodes: costCode,
                 Notes: String(primary.notes ?? ""),
               }),
             }
@@ -475,6 +478,7 @@ export default function BoxView1({ number, onBack, reportId: reportIdProp }) {
           Description: String(primary.description ?? ""),
           Supplier: String(primary.supplier ?? ""),
           Cost: String(primary.cost ?? ""),
+          CostCodes: costCode,
           Notes: String(primary.notes ?? ""),
         }),
       });

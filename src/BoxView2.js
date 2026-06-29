@@ -427,12 +427,14 @@ export default function BoxView2({ number, reportId: reportIdProp, onBack }) {
     }
 
     try {
-      for (const row of sections) {
+      for (const [itemIndex, row] of sections.entries()) {
         const primary = row?.[0];
         if (!primary || isEmpty(primary)) {
           console.warn("Skipping empty primary row");
           continue;
         }
+
+        const costCode = String(2001 + itemIndex);
 
         // 🔹 CASE 1: Existing demo (update it + its alternates)
         if (primary.isExisting && primary.demoId) {
@@ -522,6 +524,7 @@ export default function BoxView2({ number, reportId: reportIdProp, onBack }) {
             body: JSON.stringify({
               reportId,
               ...toPayload(primary),
+              CostCodes: costCode,
             }),
           }
         );
@@ -599,9 +602,7 @@ export default function BoxView2({ number, reportId: reportIdProp, onBack }) {
         <div className="text-center">
           <h2 className="mb-0">Demo Input</h2>
           <p className="mb-0 text-muted">Code {number}</p>
-          <p className="mb-0 small text-muted">
-           
-          </p>
+          <p className="mb-0 small text-muted"></p>
         </div>
 
         <div style={{ width: "90px" }} />

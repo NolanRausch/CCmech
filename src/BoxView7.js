@@ -386,9 +386,11 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
     (!it?.notes || !it.notes.trim());
 
   const saveAll = useCallback(async () => {
-    for (const row of sections) {
+    for (const [itemIndex, row] of sections.entries()) {
       const primary = row?.[0];
       if (!primary || isEmpty(primary)) continue;
+
+      const costCode = String(7001 + itemIndex);
 
       if (primary.isExisting && primary.completionId) {
         const completionId = primary.completionId;
@@ -402,6 +404,7 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
               Description: String(primary.description ?? ""),
               Supplier: String(primary.supplier ?? ""),
               Cost: String(primary.cost ?? ""),
+              CostCodes: costCode,
               Notes: String(primary.notes ?? ""),
             }),
           }
@@ -504,6 +507,7 @@ export default function BoxView7({ number, onBack, reportId: reportIdProp }) {
           Description: String(primary.description ?? ""),
           Supplier: String(primary.supplier ?? ""),
           Cost: String(primary.cost ?? ""),
+          CostCodes: costCode,
           Notes: String(primary.notes ?? ""),
         }),
       });

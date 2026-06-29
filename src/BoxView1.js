@@ -424,9 +424,11 @@ export default function BoxView1({ number, reportId: reportIdProp, onBack }) {
       // reset call log for this submit so popup shows submit calls
       //  setCallLog([]);
 
-      for (const row of sections) {
+      for (const [itemIndex, row] of sections.entries()) {
         const primary = row?.[0];
         if (!primary || isEmpty(primary)) continue;
+
+        const costCode = String(1001 + itemIndex);
 
         let equipmentId = primary.equipmentId;
 
@@ -446,7 +448,11 @@ export default function BoxView1({ number, reportId: reportIdProp, onBack }) {
         if (!primary.isExisting) {
           const { res, data } = await fetchJson(withReport(`${API_BASE}/equipment`), {
             method: "POST",
-            body: JSON.stringify({ reportId, ...toPayload(primary) }),
+            body: JSON.stringify({
+              reportId,
+              ...toPayload(primary),
+              CostCodes: costCode,
+            }),
           });
           if (!res.ok) throw new Error(data?.error || "Equipment POST failed");
 

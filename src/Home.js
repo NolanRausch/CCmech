@@ -331,11 +331,22 @@ function Home() {
   const [driveTime, setDriveTime] = useState("");
   const [premiumBaseInput, setPremiumBaseInput] = useState("");
 
+  const [jobProgressRows, setJobProgressRows] = useState([
+    { key: "equipment", code: "1000", label: "Equipment", percent: "", notes: "" },
+    { key: "demo", code: "2000", label: "Demo", percent: "", notes: "" },
+    { key: "rough", code: "3000", label: "Rough", percent: "", notes: "" },
+    { key: "air", code: "4000", label: "Air Distribution", percent: "", notes: "" },
+    { key: "electrical", code: "5000", label: "Electrical", percent: "", notes: "" },
+    { key: "piping", code: "6000", label: "Piping", percent: "", notes: "" },
+    { key: "completion", code: "7000", label: "Completion", percent: "", notes: "" },
+  ]);
+
   const STATUS_OPTIONS = useMemo(
     () => [
       { label: "Bid", value: 0 },
       { label: "Active", value: 1 },
       { label: "Lost", value: 2 },
+      { label: "Complete", value: 3 },
     ],
     []
   );
@@ -452,6 +463,22 @@ function Home() {
       if ((prev[key] ?? 0) === safe) return prev;
       return { ...prev, [key]: safe };
     });
+  }, []);
+
+  const updateJobProgressRow = useCallback((key, field, value) => {
+    setJobProgressRows((prev) =>
+      prev.map((row) =>
+        row.key === key
+          ? {
+              ...row,
+              [field]:
+                field === "percent"
+                  ? String(value || "").replace(/[^0-9.]/g, "")
+                  : value,
+            }
+          : row
+      )
+    );
   }, []);
 
   const loadAzureUser = useCallback(async () => {
@@ -727,11 +754,14 @@ function Home() {
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/reports";
   const SHARED_REPORTS_API =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/reports/shared";
+  const EXCEL_EXPORT_API =
+    "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/export-excel";
 
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError, setReportsError] = useState("");
   const [reportSortBy, setReportSortBy] = useState("dateDesc");
+  const [excelExportLoading, setExcelExportLoading] = useState(false);
 
   const blankReport = useMemo(
     () => ({
@@ -1000,6 +1030,7 @@ function Home() {
     const s = Number(status ?? 0);
     if (s === 1) return "Active";
     if (s === 2) return "Lost";
+    if (s === 3) return "Complete";
     return "Bid";
   }, []);
 
@@ -1048,11 +1079,13 @@ function Home() {
     const bids = [];
     const active = [];
     const lost = [];
+    const complete = [];
 
     for (const r of visibleReports) {
       const status = Number(r?.Status ?? 0);
       if (status === 1) active.push(r);
       else if (status === 2) lost.push(r);
+      else if (status === 3) complete.push(r);
       else bids.push(r);
     }
 
@@ -1060,6 +1093,7 @@ function Home() {
       bids: sortReports(bids),
       active: sortReports(active),
       lost: sortReports(lost),
+      complete: sortReports(complete),
     };
   }, [visibleReports, sortReports]);
 
@@ -1075,6 +1109,9 @@ function Home() {
     if (reportGroupFilter === "lost") {
       return { title: "Lost Jobs", rows: groupedReports.lost, isShared: false };
     }
+    if (reportGroupFilter === "complete") {
+      return { title: "Complete Jobs", rows: groupedReports.complete, isShared: false };
+    }
     if (reportGroupFilter === "bids") {
       return { title: "Bid Jobs", rows: groupedReports.bids, isShared: false };
     }
@@ -1088,10 +1125,111 @@ function Home() {
         ...groupedReports.bids,
         ...groupedReports.active,
         ...groupedReports.lost,
+        ...groupedReports.complete,
       ]),
       isShared: false,
     };
   }, [groupedReports, reportGroupFilter, sharedReportsSorted, sortReports]);
+
+  const currentReport = useMemo(() => {
+    const cleanReportId = normalizeGuid(reportId);
+    if (!cleanReportId) return null;
+
+    const allKnownReports = [...reports, ...sharedReports];
+    return (
+      allKnownReports.find(
+        (r) => normalizeGuid(r?.ReportId || r?.reportId || r?.id) === cleanReportId
+      ) || null
+    );
+  }, [reportId, reports, sharedReports, normalizeGuid]);
+
+  const formatExcelDate = useCallback((v) => {
+    if (!v) return "";
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return String(v).slice(0, 10);
+    return d.toISOString().slice(0, 10);
+  }, []);
+
+  const downloadBidExcel = useCallback(async () => {
+    if (!reportId) {
+      alert("Set Report ID first.");
+      return;
+    }
+
+    setExcelExportLoading(true);
+
+    try {
+      const reportName = currentReport?.ReportName || "Bid Export";
+      const safeProjectNumber = currentReport?.ProjectNumber || "";
+      const safeFileName = `${String(reportName || "Bid")
+        .replace(/[^a-z0-9-_ ]/gi, "")
+        .trim() || "Bid"}_BidTemplate.xlsx`;
+
+      const lineItemCells = {};
+      jobProgressRows.forEach((row, index) => {
+        const excelRow = 13 + index;
+        lineItemCells[`A${excelRow}`] = row.code;
+        lineItemCells[`B${excelRow}`] = row.label;
+        lineItemCells[`C${excelRow}`] = `${row.percent || 0}% Complete`;
+        lineItemCells[`F${excelRow}`] = row.notes || "";
+      });
+
+    const payload = {
+  templateName: "Project_Import_Template.xlsx",
+  fileName: safeFileName,
+  sheetName: "Project Details",
+  cells: {
+    A2: safeProjectNumber,
+    B2: reportName,
+    C2: getStatusLabel(currentReport?.Status),
+    F2: currentReport?.CustomerName || "",
+    Z2: currentReport?.Address || "",
+  },
+};
+
+      const res = await fetch(EXCEL_EXPORT_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || `HTTP ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = safeFileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("❌ downloadBidExcel:", e);
+      alert("❌ Excel export failed: " + (e.message || e));
+    } finally {
+      setExcelExportLoading(false);
+    }
+  }, [
+    reportId,
+    currentReport,
+    jobProgressRows,
+    formatExcelDate,
+    getStatusLabel,
+    subTotalWithTax,
+    laborSubTotalWithTax,
+    combinedGrandTotalWithTax,
+    taxRate,
+    pct,
+    subTotal,
+    laborSubTotal,
+    addersTotal,
+    margin1Value,
+    EXCEL_EXPORT_API,
+  ]);
 
   if (selected === 1000) {
     return (
@@ -1249,8 +1387,110 @@ function Home() {
         >
           View Totals
         </button>
+
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={downloadBidExcel}
+          disabled={!reportId || excelExportLoading}
+          title={!reportId ? "Set Report ID first" : ""}
+        >
+          {excelExportLoading ? "Exporting..." : "Export Excel"}
+        </button>
+
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={() => setViewMode("progress")}
+          disabled={!reportId}
+          title={!reportId ? "Set Report ID first" : ""}
+        >
+          Job Progress
+        </button>
       </div>
     </div>
+  );
+
+  const JobProgressOnly = () => (
+    <>
+      <h1>Capital City</h1>
+
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h5 className="mb-0">Job Progress</h5>
+
+        <div className="d-flex gap-2">
+          <button
+            className="btn btn-sm btn-success"
+            onClick={downloadBidExcel}
+            disabled={!reportId || excelExportLoading}
+          >
+            {excelExportLoading ? "Exporting..." : "Export Excel"}
+          </button>
+
+          <button
+            className="btn btn-sm btn-outline-secondary"
+            onClick={() => setViewMode("input")}
+          >
+            Back to Inputs
+          </button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-body">
+          <div className="table-responsive">
+            <table className="table table-sm table-striped align-middle">
+              <thead>
+                <tr>
+                  <th style={{ width: 90 }}>Code</th>
+                  <th>Section</th>
+                  <th style={{ width: 180 }}>% Complete</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {jobProgressRows.map((row) => (
+                  <tr key={row.key}>
+                    <td>{row.code}</td>
+                    <td>{row.label}</td>
+                    <td>
+                      <div className="input-group input-group-sm">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          className="form-control"
+                          value={row.percent}
+                          onChange={(e) =>
+                            updateJobProgressRow(row.key, "percent", e.target.value)
+                          }
+                          placeholder="0"
+                        />
+                        <span className="input-group-text">%</span>
+                      </div>
+                    </td>
+                    <td>
+                      <input
+                        className="form-control form-control-sm"
+                        value={row.notes}
+                        onChange={(e) =>
+                          updateJobProgressRow(row.key, "notes", e.target.value)
+                        }
+                        placeholder="Progress notes"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="small text-muted">
+            This section is frontend-only right now. To save this to SQL, add backend
+            fields/endpoints for these progress values.
+          </div>
+        </div>
+      </div>
+    </>
   );
 
   if (showHomeScreen) {
@@ -1287,6 +1527,7 @@ function Home() {
                   <option value="bids">Show: Bid</option>
                   <option value="active">Show: Active</option>
                   <option value="lost">Show: Lost</option>
+                  <option value="complete">Show: Complete</option>
                   <option value="shared">Show: Shared With Me</option>
                 </select>
 
@@ -1474,6 +1715,14 @@ function Home() {
               <h5 className="mb-0">Totals</h5>
 
               <div className="d-flex gap-2">
+                <button
+                  className="btn btn-sm btn-success"
+                  onClick={downloadBidExcel}
+                  disabled={!reportId || excelExportLoading}
+                >
+                  {excelExportLoading ? "Exporting..." : "Export Excel"}
+                </button>
+
                 <button
                   className="btn btn-sm btn-outline-secondary"
                   onClick={() => setViewMode("input")}
@@ -1728,6 +1977,8 @@ function Home() {
             </div>
           </div>
         </>
+      ) : viewMode === "progress" ? (
+        <JobProgressOnly />
       ) : (
         <>
           <InputsOnly />
