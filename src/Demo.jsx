@@ -1,11 +1,16 @@
 // DbTestViewer.jsx (CODE 2000 - Demo/Prep)
 // ✅ Fixes "0 alternates" by normalizing DemoId casing and storing _did
 // ✅ Keeps reportId support: query param + x-report-id header
+// ✅ Shows CostCode/CostCodes instead of row number
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxView2 from "./BoxView2";
 
-export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp }) {
+export default function DbTestViewer({
+  onTotalsChange,
+  onLineItemsChange,
+  reportId: reportIdProp,
+}) {
   // 🔧 All hooks at the top
   const [rows, setRows] = useState([]); // each row gets .Alternates: []
   const [error, setError] = useState(null);
@@ -53,7 +58,9 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
     (url) => {
       if (!reportId) return url;
       const hasQ = url.includes("?");
-      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(
+        reportId
+      )}`;
     },
     [reportId]
   );
@@ -115,6 +122,19 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
     );
   }, []);
 
+  // ✅ Cost code can come back as CostCode or CostCodes depending on endpoint/table
+  const getCostCode = useCallback((r) => {
+    return (
+      r?.CostCode ??
+      r?.CostCodes ??
+      r?.costCode ??
+      r?.costCodes ??
+      r?.COSTCODE ??
+      r?.COSTCODES ??
+      ""
+    );
+  }, []);
+
   const fetchAlternates = useCallback(
     async (demoId) => {
       if (!reportId) return [];
@@ -124,6 +144,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
         const url = withReport(
           `${API_BASE}/demo/alternates/${encodeURIComponent(demoId)}`
         );
+
         const { res, data } = await fetchJson(url, { method: "GET" });
 
         if (!res.ok) {
@@ -196,6 +217,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
         alert("Delete failed: missing reportId");
         return;
       }
+
       if (!demoId) {
         alert("Delete failed: missing DemoId");
         return;
@@ -223,6 +245,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
 
   const toggleExpand = useCallback((did) => {
     if (!did) return;
+
     setRows((prev) =>
       prev.map((r) => (r._did === did ? { ...r, _expand: !r._expand } : r))
     );
@@ -237,6 +260,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
 
   // ✅ Push totals up (dedupe + send object like your other viewers)
   const lastSentRef = useRef(null);
+
   useEffect(() => {
     if (typeof onTotalsChange !== "function") return;
 
@@ -248,6 +272,56 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
 
     onTotalsChange(payload);
   }, [totalCost, onTotalsChange]);
+
+  // ✅ Push individual Demo/Prep line items up to Home.js for TotalsPage display
+  const lastLineItemsSentRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof onLineItemsChange !== "function") return;
+
+    const lineItems = rows.map((r, index) => {
+      const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
+      const costCode = getCostCode(chosen) || getCostCode(r);
+
+      const hasUsedAlt = r?.Alternates?.some(
+        (a) => Number(a?.IsUsed) === 1 || a?.IsUsed === true
+      );
+
+      return {
+        ...chosen,
+        DemoId: r?._did || getDemoId(r),
+        CostCode: costCode,
+        CostCodes: costCode,
+        Section: "Demo",
+        SectionKey: "demo",
+        LineNumber: index + 1,
+        IsAlternateUsed: hasUsedAlt,
+        PrimaryDescription: r?.Description || "",
+        PrimarySupplier: r?.Supplier || "",
+        PrimaryCost: r?.Cost || "",
+        PrimaryCostCode: getCostCode(r),
+        PrimaryCostCodes: getCostCode(r),
+        PrimaryNotes: r?.Notes || "",
+      };
+    });
+
+    const sig = JSON.stringify(
+      lineItems.map((item) => ({
+        DemoId: item.DemoId,
+        CostCode: item.CostCode,
+        Description: item.Description,
+        Supplier: item.Supplier,
+        Cost: item.Cost,
+        Notes: item.Notes,
+        IsAlternateUsed: item.IsAlternateUsed,
+      }))
+    );
+
+    if (lastLineItemsSentRef.current === sig) return;
+    lastLineItemsSentRef.current = sig;
+
+    onLineItemsChange(lineItems);
+  }, [rows, onLineItemsChange, pickUsedOrPrimary, getDemoId, getCostCode]);
 
   if (loading) return <p className="p-3">Loading...</p>;
   if (error) return <p className="p-3 text-danger">Error: {error}</p>;
@@ -266,7 +340,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
   }
 
   const col = {
-    idx: { width: "3.25rem", whiteSpace: "nowrap" },
+    idx: { width: "6rem", whiteSpace: "nowrap" },
     desc: { width: "16rem", maxWidth: "16rem" },
     supplier: { width: "12rem", maxWidth: "12rem" },
     cost: { width: "7.5rem", whiteSpace: "nowrap" },
@@ -311,7 +385,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
             }}
           >
             <tr>
-              <th style={{ ...col.idx, backgroundColor: BLUE }}>#</th>
+              <th style={{ ...col.idx, backgroundColor: BLUE }}>Cost Code</th>
               <th style={{ ...col.desc, backgroundColor: BLUE }}>Description</th>
               <th style={{ ...col.supplier, backgroundColor: BLUE }}>Supplier</th>
               <th style={{ ...col.cost, backgroundColor: BLUE }}>Cost</th>
@@ -326,16 +400,19 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
           <tbody>
             {rows.map((r, i) => {
               const did = r._did || getDemoId(r);
+
               const hasUsedAlt = r?.Alternates?.some(
                 (a) => Number(a?.IsUsed) === 1 || a?.IsUsed === true
               );
+
               const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
+              const costCode = getCostCode(chosen) || getCostCode(r);
 
               return (
                 <React.Fragment key={did || `rowwrap-${i}`}>
                   <tr>
                     <td style={col.idx}>
-                      {i + 1}
+                      {costCode}
                       {hasUsedAlt && (
                         <span
                           className="ms-1 badge rounded-pill text-bg-success"
@@ -387,38 +464,50 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
 
                   {r._expand &&
                     (r.Alternates?.length ? (
-                      r.Alternates.map((a, ai) => (
-                        <tr
-                          key={`${did}-alt-${a?.AlternateId || a?.alternateId || ai}`}
-                          className="table-light"
-                        >
-                          <td style={col.idx}></td>
+                      r.Alternates.map((a, ai) => {
+                        const altCostCode = getCostCode(a);
 
-                          <td className="ps-4" style={{ ...col.desc }}>
-                            <span className="badge text-bg-secondary me-2">
-                              ALT
-                            </span>
-                            {a.Description}
-                            {(Number(a?.IsUsed) === 1 || a?.IsUsed === true) && (
-                              <span className="ms-2 badge text-bg-success">
-                                USED
+                        return (
+                          <tr
+                            key={`${did}-alt-${
+                              a?.AlternateId || a?.alternateId || ai
+                            }`}
+                            className="table-light"
+                          >
+                            <td style={col.idx}>{altCostCode}</td>
+
+                            <td className="ps-4" style={{ ...col.desc }}>
+                              <span className="badge text-bg-secondary me-2">
+                                ALT
                               </span>
-                            )}
-                          </td>
+                              {a.Description}
+                              {(Number(a?.IsUsed) === 1 ||
+                                a?.IsUsed === true) && (
+                                <span className="ms-2 badge text-bg-success">
+                                  USED
+                                </span>
+                              )}
+                            </td>
 
-                          <td style={{ ...col.supplier, ...col.clamp }}>
-                            {a.Supplier}
-                          </td>
+                            <td style={{ ...col.supplier, ...col.clamp }}>
+                              {a.Supplier}
+                            </td>
 
-                          <td style={col.cost}>{fmtMoney(a.Cost)}</td>
+                            <td style={col.cost}>{fmtMoney(a.Cost)}</td>
 
-                          <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
-                            {a.Notes}
-                          </td>
+                            <td
+                              style={{
+                                whiteSpace: "normal",
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {a.Notes}
+                            </td>
 
-                          <td colSpan={2}></td>
-                        </tr>
-                      ))
+                            <td colSpan={2}></td>
+                          </tr>
+                        );
+                      })
                     ) : (
                       <tr className="table-light">
                         <td style={col.idx}></td>
@@ -434,9 +523,9 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
 
           <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
             <tr>
-             <th></th>
-    <th>Total</th>
-    <th></th>
+              <th></th>
+              <th>Total</th>
+              <th></th>
               <th style={col.cost}>{fmtMoney(totalCost)}</th>
               <th colSpan={3}></th>
             </tr>

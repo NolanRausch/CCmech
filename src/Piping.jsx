@@ -2,7 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxView6 from "./BoxView6"; // ✅ editor for Piping
 
-export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp }) {
+export default function DbTestViewer({
+  onTotalsChange,
+  onLineItemsChange,
+  reportId: reportIdProp,
+}) {
   const [rows, setRows] = useState([]); // each row gets .Alternates: []
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -49,7 +53,9 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
     (url) => {
       if (!reportId) return url;
       const hasQ = url.includes("?");
-      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(
+        reportId
+      )}`;
     },
     [reportId]
   );
@@ -59,16 +65,58 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
     return isNaN(n) ? 0 : n;
   }, []);
 
-  const fmtMoney = useCallback((n) => `$${parseCost(n).toFixed(2)}`, [parseCost]);
+  const fmtMoney = useCallback(
+    (n) => {
+      const safe = parseCost(n);
+
+      return safe.toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    },
+    [parseCost]
+  );
 
   const pickUsedOrPrimary = useCallback((primary, alternates = []) => {
-    const usedAlt = alternates.find((a) => Number(a?.IsUsed) === 1);
+    const usedAlt = alternates.find(
+      (a) => Number(a?.IsUsed) === 1 || a?.IsUsed === true
+    );
     return usedAlt || primary;
+  }, []);
+
+  const getPipingId = useCallback((r) => {
+    return (
+      r?.PipingId ??
+      r?.pipingId ??
+      r?.PIPINGID ??
+      r?.id ??
+      r?.Id ??
+      r?.ID ??
+      ""
+    );
+  }, []);
+
+  // ✅ Cost code can come back as CostCode or CostCodes depending on endpoint/table
+  const getCostCode = useCallback((r) => {
+    return (
+      r?.CostCode ??
+      r?.CostCodes ??
+      r?.costCode ??
+      r?.costCodes ??
+      r?.COSTCODE ??
+      r?.COSTCODES ??
+      ""
+    );
   }, []);
 
   const fetchAlternates = useCallback(
     async (pipingId) => {
       try {
+        if (!reportId) return [];
+        if (!pipingId) return [];
+
         const res = await fetch(
           withReport(
             `${API_BASE}/piping/alternates/${encodeURIComponent(pipingId)}`
@@ -78,9 +126,11 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
             headers: reportId ? { "x-report-id": reportId } : undefined,
           }
         );
+
         if (!res.ok) throw new Error(`Alt HTTP ${res.status}`);
 
         const json = await res.json();
+
         const list = Array.isArray(json)
           ? json
           : Array.isArray(json?.sample)
@@ -101,14 +151,22 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
       setLoading(true);
       setError(null);
 
+      if (!reportId) {
+        setRows([]);
+        setError("Missing reportId (required).");
+        return;
+      }
+
       // ✅ list endpoint stays /piping, but becomes report-scoped via query+header
       const res = await fetch(withReport(`${API_BASE}/piping`), {
         method: "GET",
         headers: reportId ? { "x-report-id": reportId } : undefined,
       });
+
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const json = await res.json();
+
       const list = Array.isArray(json)
         ? json
         : Array.isArray(json?.sample)
@@ -118,8 +176,15 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
       // Attach alternates
       const withAlternates = await Promise.all(
         list.map(async (r) => {
-          const alts = await fetchAlternates(r.PipingId);
-          return { ...r, Alternates: alts, _expand: false };
+          const pipingId = getPipingId(r);
+          const alts = await fetchAlternates(pipingId);
+
+          return {
+            ...r,
+            _pid: pipingId,
+            Alternates: alts,
+            _expand: false,
+          };
         })
       );
 
@@ -129,7 +194,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
     } finally {
       setLoading(false);
     }
-  }, [API_BASE, fetchAlternates, reportId, withReport]);
+  }, [API_BASE, fetchAlternates, reportId, withReport, getPipingId]);
 
   useEffect(() => {
     fetchRows();
@@ -138,17 +203,29 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
   // ✅ delete keeps /piping/{id}, but adds report scope via query+header
   const handleDelete = async (pipingId) => {
     try {
+      if (!reportId) {
+        alert("Delete failed: missing reportId");
+        return;
+      }
+
+      if (!pipingId) {
+        alert("Delete failed: missing PipingId");
+        return;
+      }
+
       setDeletingId(pipingId);
 
       const url = withReport(
         `${API_BASE}/piping/${encodeURIComponent(pipingId)}`
       );
+
       const res = await fetch(url, {
         method: "DELETE",
         headers: reportId ? { "x-report-id": reportId } : undefined,
       });
 
       const text = await res.text();
+
       let data;
       try {
         data = JSON.parse(text);
@@ -162,7 +239,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
         );
       }
 
-      setRows((prev) => prev.filter((r) => r.PipingId !== pipingId));
+      setRows((prev) => prev.filter((r) => r._pid !== pipingId));
     } catch (e) {
       alert("Delete failed: " + (e.message || e));
       console.error(e);
@@ -172,10 +249,10 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
   };
 
   const toggleExpand = useCallback((id) => {
+    if (!id) return;
+
     setRows((prev) =>
-      prev.map((r) =>
-        r.PipingId === id ? { ...r, _expand: !r._expand } : r
-      )
+      prev.map((r) => (r._pid === id ? { ...r, _expand: !r._expand } : r))
     );
   }, []);
 
@@ -189,6 +266,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
 
   // ✅ Push totals up (dedupe + object)
   const lastSentRef = useRef(null);
+
   useEffect(() => {
     if (typeof onTotalsChange !== "function") return;
 
@@ -201,10 +279,60 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
     onTotalsChange(payload);
   }, [totalCost, onTotalsChange]);
 
+  // ✅ Push individual Piping line items up to Home.js for TotalsPage display
+  const lastLineItemsSentRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof onLineItemsChange !== "function") return;
+
+    const lineItems = rows.map((r, index) => {
+      const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
+      const costCode = getCostCode(chosen) || getCostCode(r);
+
+      const hasUsedAlt = r?.Alternates?.some(
+        (a) => Number(a?.IsUsed) === 1 || a?.IsUsed === true
+      );
+
+      return {
+        ...chosen,
+        PipingId: r?._pid || getPipingId(r),
+        CostCode: costCode,
+        CostCodes: costCode,
+        Section: "Piping",
+        SectionKey: "piping",
+        LineNumber: index + 1,
+        IsAlternateUsed: hasUsedAlt,
+        PrimaryDescription: r?.Description || "",
+        PrimarySupplier: r?.Supplier || "",
+        PrimaryCost: r?.Cost || "",
+        PrimaryCostCode: getCostCode(r),
+        PrimaryCostCodes: getCostCode(r),
+        PrimaryNotes: r?.Notes || "",
+      };
+    });
+
+    const sig = JSON.stringify(
+      lineItems.map((item) => ({
+        PipingId: item.PipingId,
+        CostCode: item.CostCode,
+        Description: item.Description,
+        Supplier: item.Supplier,
+        Cost: item.Cost,
+        Notes: item.Notes,
+        IsAlternateUsed: item.IsAlternateUsed,
+      }))
+    );
+
+    if (lastLineItemsSentRef.current === sig) return;
+    lastLineItemsSentRef.current = sig;
+
+    onLineItemsChange(lineItems);
+  }, [rows, onLineItemsChange, pickUsedOrPrimary, getPipingId, getCostCode]);
+
   if (loading) return <p className="p-3">Loading...</p>;
   if (error) return <p className="p-3 text-danger">Error: {error}</p>;
 
-  // Editor screen (BoxView3 should also use /piping endpoints)
+  // Editor screen (BoxView6 should also use /piping endpoints)
   if (selected === 1000) {
     return (
       <BoxView6
@@ -219,7 +347,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
   }
 
   const col = {
-    idx: { width: "3.25rem", whiteSpace: "nowrap" },
+    idx: { width: "6rem", whiteSpace: "nowrap" },
     desc: { width: "16rem", maxWidth: "16rem" },
     supplier: { width: "12rem", maxWidth: "12rem" },
     cost: { width: "7.5rem", whiteSpace: "nowrap" },
@@ -239,7 +367,8 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
         </button>
 
         <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
-          CODE 6000 - Gas, Copper, Steel Condensate, Refrigerant, Hangers, Valves, Piping, Insulation, Equipment Connection
+          CODE 6000 - Gas, Copper, Steel Condensate, Refrigerant, Hangers,
+          Valves, Piping, Insulation, Equipment Connection
         </h5>
       </div>
 
@@ -263,30 +392,36 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
             }}
           >
             <tr>
-              <th style={{ ...col.idx, backgroundColor: BLUE }}>#</th>
+              <th style={{ ...col.idx, backgroundColor: BLUE }}>Cost Code</th>
               <th style={{ ...col.desc, backgroundColor: BLUE }}>Description</th>
               <th style={{ ...col.supplier, backgroundColor: BLUE }}>Supplier</th>
               <th style={{ ...col.cost, backgroundColor: BLUE }}>Cost</th>
               <th style={{ backgroundColor: BLUE }}>Notes</th>
+
               <th style={{ ...col.alternates, backgroundColor: BLUE }}>
                 Alternates
               </th>
+
               <th style={{ ...col.actions, backgroundColor: BLUE }}>Actions</th>
             </tr>
           </thead>
 
           <tbody>
             {rows.map((r, i) => {
+              const pipingId = r._pid || getPipingId(r);
+
               const hasUsedAlt = r?.Alternates?.some(
-                (a) => Number(a?.IsUsed) === 1
+                (a) => Number(a?.IsUsed) === 1 || a?.IsUsed === true
               );
+
               const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
+              const costCode = getCostCode(chosen) || getCostCode(r);
 
               return (
-                <React.Fragment key={r.PipingId || `rowwrap-${i}`}>
+                <React.Fragment key={pipingId || `rowwrap-${i}`}>
                   <tr>
                     <td style={col.idx}>
-                      {i + 1}
+                      {costCode}
                       {hasUsedAlt && (
                         <span
                           className="ms-1 badge rounded-pill text-bg-success"
@@ -314,8 +449,9 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
                     <td style={col.alternates}>
                       <button
                         className="btn btn-sm btn-outline-primary"
-                        onClick={() => toggleExpand(r.PipingId)}
+                        onClick={() => toggleExpand(pipingId)}
                         title="Show/Hide alternates"
+                        disabled={!pipingId}
                       >
                         {r._expand
                           ? `Hide (${r.Alternates?.length || 0})`
@@ -326,57 +462,66 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
                     <td style={col.actions}>
                       <button
                         className="btn btn-sm btn-outline-danger"
-                        onClick={() => handleDelete(r.PipingId)}
-                        disabled={deletingId === r.PipingId}
+                        onClick={() => handleDelete(pipingId)}
+                        disabled={deletingId === pipingId || !pipingId}
                         title="Delete this Piping item"
                       >
-                        {deletingId === r.PipingId ? "Deleting…" : "Clear"}
+                        {deletingId === pipingId ? "Deleting…" : "Clear"}
                       </button>
                     </td>
                   </tr>
 
                   {r._expand &&
                     (r.Alternates?.length ? (
-                      r.Alternates.map((a, ai) => (
-                        <tr
-                          key={`${r.PipingId}-alt-${a?.AlternateId || ai}`}
-                          className="table-light"
-                        >
-                          <td style={col.idx}></td>
+                      r.Alternates.map((a, ai) => {
+                        const altCostCode = getCostCode(a);
 
-                          <td className="ps-4" style={{ ...col.desc }}>
-                            <span className="badge text-bg-secondary me-2">
-                              ALT
-                            </span>
-                            {a.Description}
-                            {Number(a?.IsUsed) === 1 && (
-                              <span className="ms-2 badge text-bg-success">
-                                USED
-                              </span>
-                            )}
-                          </td>
-
-                          <td style={{ ...col.supplier, ...col.clamp }}>
-                            {a.Supplier}
-                          </td>
-
-                          <td style={col.cost}>{fmtMoney(a.Cost)}</td>
-
-                          <td
-                            style={{
-                              whiteSpace: "normal",
-                              wordBreak: "break-word",
-                            }}
+                        return (
+                          <tr
+                            key={`${pipingId}-alt-${
+                              a?.AlternateId || a?.alternateId || ai
+                            }`}
+                            className="table-light"
                           >
-                            {a.Notes}
-                          </td>
+                            <td style={col.idx}>{altCostCode}</td>
 
-                          <td colSpan={2}></td>
-                        </tr>
-                      ))
+                            <td className="ps-4" style={{ ...col.desc }}>
+                              <span className="badge text-bg-secondary me-2">
+                                ALT
+                              </span>
+
+                              {a.Description}
+
+                              {(Number(a?.IsUsed) === 1 || a?.IsUsed === true) && (
+                                <span className="ms-2 badge text-bg-success">
+                                  USED
+                                </span>
+                              )}
+                            </td>
+
+                            <td style={{ ...col.supplier, ...col.clamp }}>
+                              {a.Supplier}
+                            </td>
+
+                            <td style={col.cost}>{fmtMoney(a.Cost)}</td>
+
+                            <td
+                              style={{
+                                whiteSpace: "normal",
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {a.Notes}
+                            </td>
+
+                            <td colSpan={2}></td>
+                          </tr>
+                        );
+                      })
                     ) : (
                       <tr className="table-light">
                         <td style={col.idx}></td>
+
                         <td className="ps-4 text-muted" colSpan={6}>
                           No alternates
                         </td>
@@ -387,11 +532,11 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
             })}
           </tbody>
 
-         <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
+          <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
             <tr>
-             <th></th>
-    <th>Total</th>
-    <th></th>
+              <th></th>
+              <th>Total</th>
+              <th></th>
               <th style={col.cost}>{fmtMoney(totalCost)}</th>
               <th colSpan={3}></th>
             </tr>

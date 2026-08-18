@@ -2,7 +2,11 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxView1 from "./BoxView1";
 
-export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp }) {
+export default function DbTestViewer({
+  onTotalsChange,
+  onLineItemsChange,
+  reportId: reportIdProp,
+}) {
   // 🔧 All hooks at the top
   const [rows, setRows] = useState([]); // each row gets .Alternates: []
   const [error, setError] = useState(null);
@@ -50,7 +54,9 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
     (url) => {
       if (!reportId) return url;
       const hasQ = url.includes("?");
-      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(
+        reportId
+      )}`;
     },
     [reportId]
   );
@@ -80,6 +86,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
   const fmtMoney = useCallback(
     (val) => {
       const n = parseNum(val);
+
       return n.toLocaleString("en-US", {
         style: "currency",
         currency: "USD",
@@ -94,7 +101,21 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
     const usedAlt = alternates.find(
       (a) => Number(a?.IsUsed) === 1 || a?.IsUsed === true
     );
+
     return usedAlt || primary;
+  }, []);
+
+  // ✅ Get CostCode / CostCodes from primary or alternate
+  const getCostCode = useCallback((r) => {
+    return (
+      r?.CostCode ??
+      r?.CostCodes ??
+      r?.costCode ??
+      r?.costCodes ??
+      r?.COSTCODE ??
+      r?.COSTCODES ??
+      ""
+    );
   }, []);
 
   // ✅ IMPORTANT: normalize equipment id from any casing the API returns
@@ -110,37 +131,40 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
     );
   }, []);
 
-const fetchAlternates = useCallback(
-  async (equipmentId) => {
-    console.log("🔥 fetchAlternates called", { equipmentId, reportId });
+  const fetchAlternates = useCallback(
+    async (equipmentId) => {
+      console.log("🔥 fetchAlternates called", { equipmentId, reportId });
 
-    if (!reportId) return [];
-    if (!equipmentId) return [];
+      if (!reportId) return [];
+      if (!equipmentId) return [];
 
-    try {
-      const rawUrl = `${API_BASE}/equipment/alternates/${encodeURIComponent(equipmentId)}`;
-      const finalUrl = withReport(rawUrl);
+      try {
+        const rawUrl = `${API_BASE}/equipment/alternates/${encodeURIComponent(
+          equipmentId
+        )}`;
 
-      // ✅ THESE ARE THE IMPORTANT LOGS
-      console.log("RAW URL:", rawUrl);
-      console.log("FINAL URL:", finalUrl);
-      console.log("REPORT ID:", reportId);
+        const finalUrl = withReport(rawUrl);
 
-      const { res, data } = await fetchJson(finalUrl, { method: "GET" });
+        // ✅ THESE ARE THE IMPORTANT LOGS
+        console.log("RAW URL:", rawUrl);
+        console.log("FINAL URL:", finalUrl);
+        console.log("REPORT ID:", reportId);
 
-      if (!res.ok) {
-        console.warn("Alternates GET not ok:", res.status, data);
+        const { res, data } = await fetchJson(finalUrl, { method: "GET" });
+
+        if (!res.ok) {
+          console.warn("Alternates GET not ok:", res.status, data);
+          return [];
+        }
+
+        return Array.isArray(data) ? data : [];
+      } catch (e) {
+        console.warn("Alternates fetch failed for", equipmentId, e);
         return [];
       }
-
-      return Array.isArray(data) ? data : [];
-    } catch (e) {
-      console.warn("Alternates fetch failed for", equipmentId, e);
-      return [];
-    }
-  },
-  [API_BASE, fetchJson, reportId, withReport]
-);
+    },
+    [API_BASE, fetchJson, reportId, withReport]
+  );
 
   const fetchRows = useCallback(async () => {
     try {
@@ -165,7 +189,13 @@ const fetchAlternates = useCallback(
         list.map(async (r) => {
           const eid = getEquipmentId(r);
           const alts = await fetchAlternates(eid);
-          return { ...r, _eid: eid, Alternates: alts, _expand: false };
+
+          return {
+            ...r,
+            _eid: eid,
+            Alternates: alts,
+            _expand: false,
+          };
         })
       );
 
@@ -193,6 +223,7 @@ const fetchAlternates = useCallback(
         alert("Delete failed: missing reportId");
         return;
       }
+
       if (!equipmentId) {
         alert("Delete failed: missing equipmentId");
         return;
@@ -203,6 +234,7 @@ const fetchAlternates = useCallback(
       const url = withReport(
         `${API_BASE}/equipment/${encodeURIComponent(equipmentId)}`
       );
+
       const { res, data } = await fetchJson(url, { method: "DELETE" });
 
       if (!res.ok) {
@@ -247,6 +279,56 @@ const fetchAlternates = useCallback(
     onTotalsChange(payload);
   }, [totalCost, onTotalsChange]);
 
+  const lastLineItemsSentRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof onLineItemsChange !== "function") return;
+
+    const lineItems = rows.map((r, index) => {
+      const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
+
+      const hasUsedAlt = r?.Alternates?.some(
+        (a) => Number(a?.IsUsed) === 1 || a?.IsUsed === true
+      );
+
+      const costCode = getCostCode(chosen) || getCostCode(r);
+
+      return {
+        ...chosen,
+        EquipmentId: r?._eid || getEquipmentId(r),
+        CostCode: costCode,
+        CostCodes: costCode,
+        Section: "Equipment",
+        SectionKey: "equipment",
+        LineNumber: index + 1,
+        IsAlternateUsed: hasUsedAlt,
+        PrimaryDescription: r?.Description || "",
+        PrimarySupplier: r?.Supplier || "",
+        PrimaryCost: r?.Cost || "",
+        PrimaryCostCode: getCostCode(r),
+        PrimaryCostCodes: getCostCode(r),
+        PrimaryNotes: r?.Notes || "",
+      };
+    });
+
+    const sig = JSON.stringify(
+      lineItems.map((item) => ({
+        EquipmentId: item.EquipmentId,
+        CostCode: item.CostCode,
+        Description: item.Description,
+        Supplier: item.Supplier,
+        Cost: item.Cost,
+        Notes: item.Notes,
+        IsAlternateUsed: item.IsAlternateUsed,
+      }))
+    );
+
+    if (lastLineItemsSentRef.current === sig) return;
+    lastLineItemsSentRef.current = sig;
+
+    onLineItemsChange(lineItems);
+  }, [rows, onLineItemsChange, pickUsedOrPrimary, getEquipmentId, getCostCode]);
+
   if (loading) return <p className="p-3">Loading...</p>;
   if (error) return <p className="p-3 text-danger">Error: {error}</p>;
 
@@ -264,7 +346,7 @@ const fetchAlternates = useCallback(
   }
 
   const col = {
-    idx: { width: "3.25rem", whiteSpace: "nowrap" },
+    idx: { width: "6rem", whiteSpace: "nowrap" },
     desc: { width: "16rem", maxWidth: "16rem" },
     supplier: { width: "12rem", maxWidth: "12rem" },
     cost: { width: "7.5rem", whiteSpace: "nowrap" },
@@ -311,7 +393,7 @@ const fetchAlternates = useCallback(
             }}
           >
             <tr>
-              <th style={{ ...col.idx, backgroundColor: BLUE }}>#</th>
+              <th style={{ ...col.idx, backgroundColor: BLUE }}>Cost Code</th>
               <th style={{ ...col.desc, backgroundColor: BLUE }}>Description</th>
               <th style={{ ...col.supplier, backgroundColor: BLUE }}>Supplier</th>
               <th style={{ ...col.cost, backgroundColor: BLUE }}>Cost</th>
@@ -324,16 +406,19 @@ const fetchAlternates = useCallback(
           <tbody>
             {rows.map((r, i) => {
               const eid = r._eid || getEquipmentId(r);
+
               const hasUsedAlt = r?.Alternates?.some(
                 (a) => Number(a?.IsUsed) === 1 || a?.IsUsed === true
               );
+
               const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
+              const costCode = getCostCode(chosen) || getCostCode(r);
 
               return (
                 <React.Fragment key={eid || `rowwrap-${i}`}>
                   <tr>
                     <td style={col.idx}>
-                      {i + 1}
+                      {costCode}
                       {hasUsedAlt && (
                         <span
                           className="ms-1 badge rounded-pill text-bg-success"
@@ -344,8 +429,14 @@ const fetchAlternates = useCallback(
                       )}
                     </td>
 
-                    <td style={{ ...col.desc, ...col.clamp }}>{chosen?.Description}</td>
-                    <td style={{ ...col.supplier, ...col.clamp }}>{chosen?.Supplier}</td>
+                    <td style={{ ...col.desc, ...col.clamp }}>
+                      {chosen?.Description}
+                    </td>
+
+                    <td style={{ ...col.supplier, ...col.clamp }}>
+                      {chosen?.Supplier}
+                    </td>
+
                     <td style={col.cost}>{fmtMoney(chosen?.Cost)}</td>
 
                     <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
@@ -379,34 +470,56 @@ const fetchAlternates = useCallback(
 
                   {r._expand &&
                     (r.Alternates?.length ? (
-                      r.Alternates.map((a, ai) => (
-                        <tr
-                          key={`${eid}-alt-${a?.AlternateId || a?.alternateId || ai}`}
-                          className="table-light"
-                        >
-                          <td style={col.idx}></td>
+                      r.Alternates.map((a, ai) => {
+                        const altCostCode = getCostCode(a) || getCostCode(r);
 
-                          <td className="ps-4" style={{ ...col.desc }}>
-                            <span className="badge text-bg-secondary me-2">ALT</span>
-                            {a.Description}
-                            {(Number(a?.IsUsed) === 1 || a?.IsUsed === true) && (
-                              <span className="ms-2 badge text-bg-success">USED</span>
-                            )}
-                          </td>
+                        return (
+                          <tr
+                            key={`${eid}-alt-${
+                              a?.AlternateId || a?.alternateId || ai
+                            }`}
+                            className="table-light"
+                          >
+                            <td style={col.idx}>{altCostCode}</td>
 
-                          <td style={{ ...col.supplier, ...col.clamp }}>{a.Supplier}</td>
-                          <td style={col.cost}>{fmtMoney(a.Cost)}</td>
+                            <td className="ps-4" style={{ ...col.desc }}>
+                              <span className="badge text-bg-secondary me-2">
+                                ALT
+                              </span>
 
-                          <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
-                            {a.Notes}
-                          </td>
+                              {a.Description}
 
-                          <td colSpan={2}></td>
-                        </tr>
-                      ))
+                              {(Number(a?.IsUsed) === 1 ||
+                                a?.IsUsed === true) && (
+                                <span className="ms-2 badge text-bg-success">
+                                  USED
+                                </span>
+                              )}
+                            </td>
+
+                            <td style={{ ...col.supplier, ...col.clamp }}>
+                              {a.Supplier}
+                            </td>
+
+                            <td style={col.cost}>{fmtMoney(a.Cost)}</td>
+
+                            <td
+                              style={{
+                                whiteSpace: "normal",
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {a.Notes}
+                            </td>
+
+                            <td colSpan={2}></td>
+                          </tr>
+                        );
+                      })
                     ) : (
                       <tr className="table-light">
                         <td style={col.idx}></td>
+
                         <td className="ps-4 text-muted" colSpan={6}>
                           No alternates
                         </td>
@@ -417,15 +530,15 @@ const fetchAlternates = useCallback(
             })}
           </tbody>
 
-         <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
-  <tr>
-    <th></th>
-    <th>Total</th>
-    <th></th>
-    <th style={col.cost}>{fmtMoney(totals.materialCost)}</th>
-    <th colSpan={3}></th>
-  </tr>
-</tfoot>
+          <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
+            <tr>
+              <th></th>
+              <th>Total</th>
+              <th></th>
+              <th style={col.cost}>{fmtMoney(totals.materialCost)}</th>
+              <th colSpan={3}></th>
+            </tr>
+          </tfoot>
         </table>
       </div>
 

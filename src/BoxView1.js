@@ -438,7 +438,11 @@ export default function BoxView1({ number, reportId: reportIdProp, onBack }) {
             withReport(`${API_BASE}/equipment/${encodeURIComponent(equipmentId)}`),
             {
               method: "PUT",
-              body: JSON.stringify({ reportId, ...toPayload(primary) }),
+              body: JSON.stringify({
+                reportId,
+                ...toPayload(primary),
+                CostCodes: costCode,
+              }),
             }
           );
           if (!res.ok) throw new Error(data?.error || "Equipment UPDATE failed");
@@ -476,6 +480,7 @@ export default function BoxView1({ number, reportId: reportIdProp, onBack }) {
                 body: JSON.stringify({
                   reportId,
                   ...toPayload(alt),
+                  CostCodes: costCode,
                   IsUsed: alt.used ? 1 : 0,
                 }),
               }
@@ -493,6 +498,7 @@ export default function BoxView1({ number, reportId: reportIdProp, onBack }) {
                 reportId,
                 EquipmentId: equipmentId,
                 ...toPayload(alt),
+                CostCodes: costCode,
                 IsUsed: alt.used ? 1 : 0,
               }),
             }

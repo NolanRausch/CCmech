@@ -2,7 +2,11 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxView3 from "./BoxView3";
 
-export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp }) {
+export default function DbTestViewer({
+  onTotalsChange,
+  onLineItemsChange,
+  reportId: reportIdProp,
+}) {
   const [rows, setRows] = useState([]); // each row gets .Alternates: []
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -49,7 +53,9 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
     (url) => {
       if (!reportId) return url;
       const hasQ = url.includes("?");
-      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(
+        reportId
+      )}`;
     },
     [reportId]
   );
@@ -59,23 +65,69 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
     return isNaN(n) ? 0 : n;
   }, []);
 
-  const fmtMoney = useCallback((n) => `$${parseCost(n).toFixed(2)}`, [parseCost]);
+  const fmtMoney = useCallback(
+    (n) => {
+      const safe = parseCost(n);
+
+      return safe.toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    },
+    [parseCost]
+  );
 
   const pickUsedOrPrimary = useCallback((primary, alternates = []) => {
-    const usedAlt = alternates.find((a) => Number(a?.IsUsed) === 1);
+    const usedAlt = alternates.find(
+      (a) => Number(a?.IsUsed) === 1 || a?.IsUsed === true
+    );
     return usedAlt || primary;
+  }, []);
+
+  const getERoughId = useCallback((r) => {
+    return (
+      r?.ERoughId ??
+      r?.eRoughId ??
+      r?.eroughId ??
+      r?.EROUGHID ??
+      r?.id ??
+      r?.Id ??
+      r?.ID ??
+      ""
+    );
+  }, []);
+
+  // ✅ Cost code can come back as CostCode or CostCodes depending on endpoint/table
+  const getCostCode = useCallback((r) => {
+    return (
+      r?.CostCode ??
+      r?.CostCodes ??
+      r?.costCode ??
+      r?.costCodes ??
+      r?.COSTCODE ??
+      r?.COSTCODES ??
+      ""
+    );
   }, []);
 
   const fetchAlternates = useCallback(
     async (eRoughId) => {
       try {
+        if (!reportId) return [];
+        if (!eRoughId) return [];
+
         const res = await fetch(
-          withReport(`${API_BASE}/erough/alternates/${encodeURIComponent(eRoughId)}`),
+          withReport(
+            `${API_BASE}/erough/alternates/${encodeURIComponent(eRoughId)}`
+          ),
           {
             method: "GET",
             headers: reportId ? { "x-report-id": reportId } : undefined,
           }
         );
+
         if (!res.ok) throw new Error(`Alt HTTP ${res.status}`);
 
         const json = await res.json();
@@ -99,11 +151,18 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
       setLoading(true);
       setError(null);
 
+      if (!reportId) {
+        setRows([]);
+        setError("Missing reportId (required).");
+        return;
+      }
+
       // ✅ list endpoint stays /erough, but becomes report-scoped via query+header
       const res = await fetch(withReport(`${API_BASE}/erough`), {
         method: "GET",
         headers: reportId ? { "x-report-id": reportId } : undefined,
       });
+
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const json = await res.json();
@@ -115,8 +174,9 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
 
       const withAlternates = await Promise.all(
         list.map(async (r) => {
-          const alts = await fetchAlternates(r.ERoughId);
-          return { ...r, Alternates: alts, _expand: false };
+          const eRoughId = getERoughId(r);
+          const alts = await fetchAlternates(eRoughId);
+          return { ...r, _erid: eRoughId, Alternates: alts, _expand: false };
         })
       );
 
@@ -126,7 +186,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
     } finally {
       setLoading(false);
     }
-  }, [API_BASE, fetchAlternates, reportId, withReport]);
+  }, [API_BASE, fetchAlternates, reportId, withReport, getERoughId]);
 
   useEffect(() => {
     fetchRows();
@@ -135,6 +195,16 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
   // ✅ delete keeps /erough/{id}, but adds report scope via query+header
   const handleDelete = async (eRoughId) => {
     try {
+      if (!reportId) {
+        alert("Delete failed: missing reportId");
+        return;
+      }
+
+      if (!eRoughId) {
+        alert("Delete failed: missing ERoughId");
+        return;
+      }
+
       setDeletingId(eRoughId);
 
       const url = withReport(`${API_BASE}/erough/${encodeURIComponent(eRoughId)}`);
@@ -144,6 +214,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
       });
 
       const text = await res.text();
+
       let data;
       try {
         data = JSON.parse(text);
@@ -157,7 +228,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
         );
       }
 
-      setRows((prev) => prev.filter((r) => r.ERoughId !== eRoughId));
+      setRows((prev) => prev.filter((r) => r._erid !== eRoughId));
     } catch (e) {
       alert("Delete failed: " + (e.message || e));
       console.error(e);
@@ -167,8 +238,10 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
   };
 
   const toggleExpand = useCallback((id) => {
+    if (!id) return;
+
     setRows((prev) =>
-      prev.map((r) => (r.ERoughId === id ? { ...r, _expand: !r._expand } : r))
+      prev.map((r) => (r._erid === id ? { ...r, _expand: !r._expand } : r))
     );
   }, []);
 
@@ -181,6 +254,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
 
   // ✅ Push totals up (dedupe + send object)
   const lastSentRef = useRef(null);
+
   useEffect(() => {
     if (typeof onTotalsChange !== "function") return;
 
@@ -192,6 +266,57 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
 
     onTotalsChange(payload);
   }, [totalCost, onTotalsChange]);
+
+  // ✅ Push individual Equipment Rough line items up to Home.js for TotalsPage display
+  const lastLineItemsSentRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof onLineItemsChange !== "function") return;
+
+    const lineItems = rows.map((r, index) => {
+      const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
+      const costCode = getCostCode(chosen) || getCostCode(r);
+
+      const hasUsedAlt = r?.Alternates?.some(
+        (a) => Number(a?.IsUsed) === 1 || a?.IsUsed === true
+      );
+
+      return {
+        ...chosen,
+        ERoughId: r?._erid || getERoughId(r),
+        RoughId: r?._erid || getERoughId(r),
+        CostCode: costCode,
+        CostCodes: costCode,
+        Section: "Rough",
+        SectionKey: "rough",
+        LineNumber: index + 1,
+        IsAlternateUsed: hasUsedAlt,
+        PrimaryDescription: r?.Description || "",
+        PrimarySupplier: r?.Supplier || "",
+        PrimaryCost: r?.Cost || "",
+        PrimaryCostCode: getCostCode(r),
+        PrimaryCostCodes: getCostCode(r),
+        PrimaryNotes: r?.Notes || "",
+      };
+    });
+
+    const sig = JSON.stringify(
+      lineItems.map((item) => ({
+        ERoughId: item.ERoughId,
+        CostCode: item.CostCode,
+        Description: item.Description,
+        Supplier: item.Supplier,
+        Cost: item.Cost,
+        Notes: item.Notes,
+        IsAlternateUsed: item.IsAlternateUsed,
+      }))
+    );
+
+    if (lastLineItemsSentRef.current === sig) return;
+    lastLineItemsSentRef.current = sig;
+
+    onLineItemsChange(lineItems);
+  }, [rows, onLineItemsChange, pickUsedOrPrimary, getERoughId, getCostCode]);
 
   if (loading) return <p className="p-3">Loading...</p>;
   if (error) return <p className="p-3 text-danger">Error: {error}</p>;
@@ -212,7 +337,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
 
   // ✅ fixed widths so Notes gets remaining space
   const col = {
-    idx: { width: "3.25rem", whiteSpace: "nowrap" },
+    idx: { width: "6rem", whiteSpace: "nowrap" },
     desc: { width: "16rem", maxWidth: "16rem" },
     supplier: { width: "12rem", maxWidth: "12rem" },
     cost: { width: "7.5rem", whiteSpace: "nowrap" },
@@ -233,8 +358,8 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
         </button>
 
         <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
-          CODE 3000 - Equipment Rough: Rigging, Roofing, Pads, Cutting/Coring, Tool Rental,
-          Construction, GC, Storage Containers
+          CODE 3000 - Equipment Rough: Rigging, Roofing, Pads, Cutting/Coring,
+          Tool Rental, Construction, GC, Storage Containers
         </h5>
       </div>
 
@@ -258,7 +383,7 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
             }}
           >
             <tr>
-              <th style={{ ...col.idx, backgroundColor: BLUE }}>#</th>
+              <th style={{ ...col.idx, backgroundColor: BLUE }}>Cost Code</th>
               <th style={{ ...col.desc, backgroundColor: BLUE }}>Description</th>
               <th style={{ ...col.supplier, backgroundColor: BLUE }}>Supplier</th>
               <th style={{ ...col.cost, backgroundColor: BLUE }}>Cost</th>
@@ -270,14 +395,20 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
 
           <tbody>
             {rows.map((r, i) => {
-              const hasUsedAlt = r?.Alternates?.some((a) => Number(a?.IsUsed) === 1);
+              const eRoughId = r._erid || getERoughId(r);
+
+              const hasUsedAlt = r?.Alternates?.some(
+                (a) => Number(a?.IsUsed) === 1 || a?.IsUsed === true
+              );
+
               const chosen = pickUsedOrPrimary(r, r?.Alternates || []);
+              const costCode = getCostCode(chosen) || getCostCode(r);
 
               return (
-                <React.Fragment key={r.ERoughId || `rowwrap-${i}`}>
+                <React.Fragment key={eRoughId || `rowwrap-${i}`}>
                   <tr>
                     <td style={col.idx}>
-                      {i + 1}
+                      {costCode}
                       {hasUsedAlt && (
                         <span
                           className="ms-1 badge rounded-pill text-bg-success"
@@ -288,8 +419,14 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
                       )}
                     </td>
 
-                    <td style={{ ...col.desc, ...col.clamp }}>{chosen?.Description}</td>
-                    <td style={{ ...col.supplier, ...col.clamp }}>{chosen?.Supplier}</td>
+                    <td style={{ ...col.desc, ...col.clamp }}>
+                      {chosen?.Description}
+                    </td>
+
+                    <td style={{ ...col.supplier, ...col.clamp }}>
+                      {chosen?.Supplier}
+                    </td>
+
                     <td style={col.cost}>{fmtMoney(chosen?.Cost)}</td>
 
                     <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
@@ -299,8 +436,9 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
                     <td style={col.alternates}>
                       <button
                         className="btn btn-sm btn-outline-primary"
-                        onClick={() => toggleExpand(r.ERoughId)}
+                        onClick={() => toggleExpand(eRoughId)}
                         title="Show/Hide alternates"
+                        disabled={!eRoughId}
                       >
                         {r._expand
                           ? `Hide (${r.Alternates?.length || 0})`
@@ -311,42 +449,58 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
                     <td style={col.actions}>
                       <button
                         className="btn btn-sm btn-outline-danger"
-                        onClick={() => handleDelete(r.ERoughId)}
-                        disabled={deletingId === r.ERoughId}
+                        onClick={() => handleDelete(eRoughId)}
+                        disabled={deletingId === eRoughId || !eRoughId}
                         title="Delete this ERough item"
                       >
-                        {deletingId === r.ERoughId ? "Deleting…" : "Clear"}
+                        {deletingId === eRoughId ? "Deleting…" : "Clear"}
                       </button>
                     </td>
                   </tr>
 
                   {r._expand &&
                     (r.Alternates?.length ? (
-                      r.Alternates.map((a, ai) => (
-                        <tr
-                          key={`${r.ERoughId}-alt-${a?.AlternateId || ai}`}
-                          className="table-light"
-                        >
-                          <td style={col.idx}></td>
+                      r.Alternates.map((a, ai) => {
+                        const altCostCode = getCostCode(a);
 
-                          <td className="ps-4" style={{ ...col.desc }}>
-                            <span className="badge text-bg-secondary me-2">ALT</span>
-                            {a.Description}
-                            {Number(a?.IsUsed) === 1 && (
-                              <span className="ms-2 badge text-bg-success">USED</span>
-                            )}
-                          </td>
+                        return (
+                          <tr
+                            key={`${eRoughId}-alt-${a?.AlternateId || ai}`}
+                            className="table-light"
+                          >
+                            <td style={col.idx}>{altCostCode}</td>
 
-                          <td style={{ ...col.supplier, ...col.clamp }}>{a.Supplier}</td>
-                          <td style={col.cost}>{fmtMoney(a.Cost)}</td>
+                            <td className="ps-4" style={{ ...col.desc }}>
+                              <span className="badge text-bg-secondary me-2">
+                                ALT
+                              </span>
+                              {a.Description}
+                              {(Number(a?.IsUsed) === 1 || a?.IsUsed === true) && (
+                                <span className="ms-2 badge text-bg-success">
+                                  USED
+                                </span>
+                              )}
+                            </td>
 
-                          <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
-                            {a.Notes}
-                          </td>
+                            <td style={{ ...col.supplier, ...col.clamp }}>
+                              {a.Supplier}
+                            </td>
 
-                          <td colSpan={2}></td>
-                        </tr>
-                      ))
+                            <td style={col.cost}>{fmtMoney(a.Cost)}</td>
+
+                            <td
+                              style={{
+                                whiteSpace: "normal",
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {a.Notes}
+                            </td>
+
+                            <td colSpan={2}></td>
+                          </tr>
+                        );
+                      })
                     ) : (
                       <tr className="table-light">
                         <td style={col.idx}></td>
@@ -362,9 +516,9 @@ export default function DbTestViewer({ onTotalsChange, reportId: reportIdProp })
 
           <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
             <tr>
-                <th></th>
-    <th>Total</th>
-    <th></th>
+              <th></th>
+              <th>Total</th>
+              <th></th>
               <th style={col.cost}>{fmtMoney(totalCost)}</th>
               <th colSpan={3}></th>
             </tr>

@@ -12,6 +12,7 @@ import AirDistribution from "./AIrDistribution";
 import Electrical from "./Electrical";
 import Piping from "./Piping";
 import Completion from "./Completion";
+import TotalsPage from "./TotalsPage";
 
 // Labor components
 import Labor from "./Labor";
@@ -21,270 +22,6 @@ import Labor4 from "./Labor4";
 import Labor5 from "./Labor5";
 import Labor6 from "./Labor6";
 import Labor7 from "./Labor7";
-
-const TOTALS_COLS = "360px 120px 180px";
-
-function TotalsRow({
-  label,
-  hours = "",
-  total = "",
-  strong = false,
-  muted = false,
-}) {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: TOTALS_COLS,
-        columnGap: 14,
-        alignItems: "baseline",
-        padding: "3px 0",
-        fontSize: 12,
-        lineHeight: 1.35,
-        opacity: muted ? 0.75 : 1,
-      }}
-    >
-      <div style={{ fontWeight: strong ? 700 : 400 }}>{label}</div>
-      <div
-        style={{
-          textAlign: "right",
-          fontVariantNumeric: "tabular-nums",
-          whiteSpace: "nowrap",
-          opacity: hours ? 0.9 : 0.4,
-        }}
-      >
-        {hours}
-      </div>
-      <div
-        style={{
-          textAlign: "right",
-          fontWeight: strong ? 800 : 600,
-          fontVariantNumeric: "tabular-nums",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {total}
-      </div>
-    </div>
-  );
-}
-
-function TotalsAdderRow({
-  checked,
-  onChange,
-  label,
-  hours = "",
-  total = "",
-}) {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: TOTALS_COLS,
-        columnGap: 14,
-        alignItems: "center",
-        padding: "3px 0",
-        fontSize: 12,
-        lineHeight: 1.35,
-      }}
-    >
-      <label
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          margin: 0,
-          cursor: "pointer",
-        }}
-      >
-        <input type="checkbox" checked={checked} onChange={onChange} />
-        <span>{label}</span>
-      </label>
-
-      <div
-        style={{
-          textAlign: "right",
-          fontVariantNumeric: "tabular-nums",
-          whiteSpace: "nowrap",
-          opacity: hours ? 0.9 : 0.4,
-        }}
-      >
-        {hours}
-      </div>
-
-      <div
-        style={{
-          textAlign: "right",
-          fontWeight: 600,
-          fontVariantNumeric: "tabular-nums",
-          whiteSpace: "nowrap",
-          opacity: checked ? 1 : 0.45,
-        }}
-      >
-        {total}
-      </div>
-    </div>
-  );
-}
-
-function TotalsDriveTimeRow({
-  checked,
-  onChange,
-  value,
-  onValueChange,
-  total = "",
-  formulaHours = 0,
-  laborHoursTotal = 0,
-  hoursInWorkWeek = 40,
-}) {
-  const distanceValue = Number(value) || 0;
-  const denominator = Number(hoursInWorkWeek) - distanceValue;
-
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: TOTALS_COLS,
-        columnGap: 14,
-        alignItems: "start",
-        padding: "3px 0",
-        fontSize: 12,
-        lineHeight: 1.35,
-      }}
-    >
-      <label
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          margin: 0,
-          cursor: "pointer",
-          paddingTop: 6,
-        }}
-      >
-        <input type="checkbox" checked={checked} onChange={onChange} />
-        <span>Drive Time</span>
-      </label>
-
-      <div style={{ textAlign: "right" }}>
-        <input
-          type="number"
-          step="0.01"
-          min="0"
-          value={value}
-          onChange={onValueChange}
-          style={{ width: 100, textAlign: "right" }}
-        />
-
-        <div
-          style={{
-            marginTop: 4,
-            fontSize: 11,
-            color: "#666",
-            whiteSpace: "normal",
-          }}
-        >
-          {denominator > 0
-            ? `(${Number(laborHoursTotal || 0).toFixed(2)} / (${Number(
-                hoursInWorkWeek || 0
-              ).toFixed(2)} - ${distanceValue.toFixed(2)})) × ${distanceValue.toFixed(
-                2
-              )} = ${Number(formulaHours || 0).toFixed(2)} hrs`
-            : "Hours in work week must be greater than drive time."}
-        </div>
-      </div>
-
-      <div
-        style={{
-          textAlign: "right",
-          fontWeight: 600,
-          fontVariantNumeric: "tabular-nums",
-          whiteSpace: "nowrap",
-          opacity: checked ? 1 : 0.45,
-          paddingTop: 6,
-        }}
-      >
-        {total}
-      </div>
-    </div>
-  );
-}
-
-function TotalsSellRow({
-  value,
-  onChange,
-  total = "",
-  romh = "",
-  laborHoursTotal,
-  pct,
-}) {
-  return (
-    <>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: TOTALS_COLS,
-          columnGap: 14,
-          alignItems: "center",
-          padding: "3px 0",
-          fontSize: 12,
-          lineHeight: 1.35,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            max="99.99"
-            value={Number((Number(value || 0) * 100).toFixed(2))}
-            onChange={onChange}
-            style={{ width: 90 }}
-          />
-          <span>Margin</span>
-        </div>
-
-        <div
-          style={{
-            textAlign: "right",
-            fontVariantNumeric: "tabular-nums",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {pct(value)}
-        </div>
-
-        <div
-          style={{
-            textAlign: "right",
-            fontWeight: 600,
-            fontVariantNumeric: "tabular-nums",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {total}
-        </div>
-      </div>
-
-      <TotalsRow
-        label="Return on Man Hours"
-        hours={laborHoursTotal ? `${laborHoursTotal.toFixed(2)} hrs` : "0.00 hrs"}
-        total={romh}
-        muted
-      />
-    </>
-  );
-}
-
-function TotalsSectionTitle({ children }) {
-  return (
-    <div
-      style={{ marginTop: 12, marginBottom: 6, fontSize: 12, fontWeight: 800 }}
-    >
-      {children}
-    </div>
-  );
-}
 
 function Home() {
   const [showHomeScreen, setShowHomeScreen] = useState(true);
@@ -321,6 +58,26 @@ function Home() {
     labor5: { cost: 0, hours: 0, byType: [] },
     labor6: { cost: 0, hours: 0, byType: [] },
     labor7: { cost: 0, hours: 0, byType: [] },
+  });
+
+  const [lineItemsBySection, setLineItemsBySection] = useState({
+    equipment: [],
+    demo: [],
+    rough: [],
+    air: [],
+    electrical: [],
+    piping: [],
+    completion: [],
+  });
+
+  const [laborLineItemsBySection, setLaborLineItemsBySection] = useState({
+    labor1: [],
+    labor2: [],
+    labor3: [],
+    labor4: [],
+    labor5: [],
+    labor6: [],
+    labor7: [],
   });
 
   const [enabledAdders, setEnabledAdders] = useState({
@@ -361,6 +118,7 @@ function Home() {
 
   const REPORT_USERNAMES_API =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/report-usernames";
+
   const [shareUsernames, setShareUsernames] = useState([]);
   const [shareUsernamesLoading, setShareUsernamesLoading] = useState(false);
   const [shareOpenForId, setShareOpenForId] = useState("");
@@ -398,6 +156,7 @@ function Home() {
 
   const setSectionCost = useCallback((key, cost) => {
     const next = Number(cost) || 0;
+
     setTotalsBySection((prev) => {
       if ((prev[key] ?? 0) === next) return prev;
       return { ...prev, [key]: next };
@@ -407,9 +166,11 @@ function Home() {
   const readCost = useCallback((t) => {
     if (typeof t === "number") return t;
     if (typeof t === "string") return Number(t);
+
     if (t && typeof t === "object") {
       return Number(t.cost ?? t.total ?? t.totalCost ?? t.subTotal) || 0;
     }
+
     return 0;
   }, []);
 
@@ -436,6 +197,7 @@ function Home() {
 
       setLaborSections((prev) => {
         const curr = prev[key];
+
         const same =
           (curr?.cost ?? 0) === parsed.cost &&
           (curr?.hours ?? 0) === parsed.hours &&
@@ -446,6 +208,58 @@ function Home() {
       });
     },
     [readLaborPayload]
+  );
+
+  const readLineItemsPayload = useCallback((payload) => {
+    if (Array.isArray(payload)) return payload;
+
+    if (payload && typeof payload === "object") {
+      if (Array.isArray(payload.rows)) return payload.rows;
+      if (Array.isArray(payload.items)) return payload.items;
+      if (Array.isArray(payload.lineItems)) return payload.lineItems;
+      if (Array.isArray(payload.data)) return payload.data;
+      if (Array.isArray(payload.recordset)) return payload.recordset;
+    }
+
+    return [];
+  }, []);
+
+  const setSectionLineItems = useCallback(
+    (key, payload) => {
+      const rows = readLineItemsPayload(payload);
+
+      setLineItemsBySection((prev) => {
+        const same =
+          JSON.stringify(prev?.[key] ?? []) === JSON.stringify(rows ?? []);
+
+        if (same) return prev;
+
+        return {
+          ...prev,
+          [key]: rows,
+        };
+      });
+    },
+    [readLineItemsPayload]
+  );
+
+  const setLaborLineItems = useCallback(
+    (key, payload) => {
+      const rows = readLineItemsPayload(payload);
+
+      setLaborLineItemsBySection((prev) => {
+        const same =
+          JSON.stringify(prev?.[key] ?? []) === JSON.stringify(rows ?? []);
+
+        if (same) return prev;
+
+        return {
+          ...prev,
+          [key]: rows,
+        };
+      });
+    },
+    [readLineItemsPayload]
   );
 
   const toggleAdder = useCallback((key) => {
@@ -483,6 +297,7 @@ function Home() {
 
   const loadAzureUser = useCallback(async () => {
     setAzureUserLoading(true);
+
     try {
       const res = await fetch("/.auth/me", { credentials: "include" });
       const data = await res.json().catch(() => null);
@@ -500,260 +315,12 @@ function Home() {
     [azureUser]
   );
 
-  const money = useCallback((val) => {
-    const n = Number(String(val ?? "").replace(/[^0-9.\-]/g, ""));
-    const safe = isNaN(n) ? 0 : n;
-    return safe.toLocaleString("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  }, []);
-
-  const withTax = useCallback(
-    (n) => Number(n || 0) * (1 + (Number(taxRate) || 0)),
-    [taxRate]
-  );
-
-  const labelForSection = useCallback((k) => {
-    if (k === "air") return "Air Distribution";
-    return k.charAt(0).toUpperCase() + k.slice(1);
-  }, []);
-
-  const pct = useCallback((n) => `${(Number(n || 0) * 100).toFixed(2)}%`, []);
-
-  const subTotal = useMemo(
-    () => Object.values(totalsBySection).reduce((sum, v) => sum + (Number(v) || 0), 0),
-    [totalsBySection]
-  );
-
-  const subTotalWithTax = useMemo(() => withTax(subTotal), [subTotal, withTax]);
-  const grandTotalWithTax = subTotalWithTax;
-
-  const laborSubTotal = useMemo(
-    () => Object.values(laborSections).reduce((sum, v) => sum + (Number(v?.cost) || 0), 0),
-    [laborSections]
-  );
-
-  const laborHoursTotal = useMemo(
-    () => Object.values(laborSections).reduce((sum, v) => sum + (Number(v?.hours) || 0), 0),
-    [laborSections]
-  );
-
-  const laborByType = useMemo(() => {
-    const map = new Map();
-
-    for (const section of Object.values(laborSections)) {
-      const list = Array.isArray(section?.byType) ? section.byType : [];
-      for (const row of list) {
-        const type = String(row?.type ?? "").trim() || "Unspecified";
-        const cost = Number(row?.cost) || 0;
-        const hours = Number(row?.hours) || 0;
-        const prev = map.get(type) || { type, cost: 0, hours: 0 };
-        prev.cost += cost;
-        prev.hours += hours;
-        map.set(type, prev);
-      }
-    }
-
-    return Array.from(map.values()).sort((a, b) => b.cost - a.cost);
-  }, [laborSections]);
-
-  const laborSectionRows = useMemo(() => {
-    const order = [
-      ["labor1", "Labor 1"],
-      ["labor2", "Labor 2"],
-      ["labor3", "Labor 3"],
-      ["labor4", "Labor 4"],
-      ["labor5", "Labor 5"],
-      ["labor6", "Labor 6"],
-      ["labor7", "Labor 7"],
-    ];
-
-    return order
-      .map(([key, label]) => {
-        const v = laborSections[key] || {};
-        return {
-          key,
-          label,
-          cost: Number(v.cost) || 0,
-          hours: Number(v.hours) || 0,
-        };
-      })
-      .filter((x) => x.cost !== 0 || x.hours !== 0);
-  }, [laborSections]);
-
-  const laborSubTotalWithTax = useMemo(
-    () => withTax(laborSubTotal),
-    [laborSubTotal, withTax]
-  );
-  const laborGrandTotalWithTax = laborSubTotalWithTax;
-
-  const combinedGrandTotalWithTax = useMemo(
-    () => grandTotalWithTax + laborGrandTotalWithTax,
-    [grandTotalWithTax, laborGrandTotalWithTax]
-  );
-
-  const contingencyRate = 0.02;
-  const warrantyRate = 0.03;
-  const consumablesRate = 0.025;
-  const perDiemDaily = 25;
-  const perDiemMult = 1.1;
-  const hoursInWorkWeek = 40;
-
-  const contingency = useMemo(
-    () => grandTotalWithTax * contingencyRate,
-    [grandTotalWithTax]
-  );
-  const perDiem = useMemo(
-    () => perDiemDaily * laborHoursTotal * perDiemMult,
-    [laborHoursTotal]
-  );
-  const warranty = useMemo(
-    () => grandTotalWithTax * warrantyRate,
-    [grandTotalWithTax]
-  );
-  const consumables = useMemo(() => subTotal * consumablesRate, [subTotal]);
-
-  const driveTimeFormulaHours = useMemo(() => {
-    const distanceBothWays = Number(driveTime) || 0;
-    const denominator = hoursInWorkWeek - distanceBothWays;
-
-    if (distanceBothWays <= 0) return 0;
-    if (laborHoursTotal <= 0) return 0;
-    if (denominator <= 0) return 0;
-
-    return (laborHoursTotal / denominator) * distanceBothWays;
-  }, [driveTime, laborHoursTotal]);
-
-  const driveTimeIncluded = useMemo(
-    () => (enabledAdders.driveTime ? driveTimeFormulaHours : 0),
-    [enabledAdders.driveTime, driveTimeFormulaHours]
-  );
-
-  const perDiemIncluded = useMemo(
-    () => (enabledAdders.perDiem ? perDiem : 0),
-    [enabledAdders.perDiem, perDiem]
-  );
-
-  const addersTotal = useMemo(
-    () => contingency + perDiemIncluded + warranty + consumables + driveTimeIncluded,
-    [contingency, perDiemIncluded, warranty, consumables, driveTimeIncluded]
-  );
-
-  const combinedWithAdders = useMemo(
-    () => combinedGrandTotalWithTax + addersTotal,
-    [combinedGrandTotalWithTax, addersTotal]
-  );
-
-  const nonLaborWithAdders = useMemo(
-    () => grandTotalWithTax + addersTotal,
-    [grandTotalWithTax, addersTotal]
-  );
-
-  const premiumBaseAmount = useMemo(() => {
-    if (String(premiumBaseInput).trim() === "") return combinedWithAdders;
-    return Number(premiumBaseInput) || 0;
-  }, [premiumBaseInput, combinedWithAdders]);
-
-  const premiumTier1 = useMemo(() => {
-    if (premiumBaseAmount < 100000) {
-      return Math.round(premiumBaseAmount * 12.96) / 1000;
-    }
-    return 1296;
-  }, [premiumBaseAmount]);
-
-  const premiumTier2 = useMemo(() => {
-    if (premiumBaseAmount <= 100000) return 0;
-    if (premiumBaseAmount < 500000) {
-      return Math.round((premiumBaseAmount - 100000) * 12.96) / 1000;
-    }
-    return 5184;
-  }, [premiumBaseAmount]);
-
-  const premiumTier3 = useMemo(() => {
-    if (premiumBaseAmount <= 500000) return 0;
-    if (premiumBaseAmount < 2500000) {
-      return Math.round((premiumBaseAmount - 500000) * 7.83) / 1000;
-    }
-    return 15660;
-  }, [premiumBaseAmount]);
-
-  const premiumTier4 = useMemo(() => {
-    if (premiumBaseAmount <= 2500000) return 0;
-    if (premiumBaseAmount < 5000000) {
-      return Math.round((premiumBaseAmount - 2500000) * 6.21) / 1000;
-    }
-    return Math.round(2500000 * 6.21) / 1000;
-  }, [premiumBaseAmount]);
-
-  const premiumTier5 = useMemo(() => {
-    if (premiumBaseAmount <= 5000000) return 0;
-    if (premiumBaseAmount < 7500000) {
-      return Math.round((premiumBaseAmount - 5000000) * 5.67) / 1000;
-    }
-    return Math.round(2500000 * 5.67) / 1000;
-  }, [premiumBaseAmount]);
-
-  const premiumTier6 = useMemo(() => {
-    if (premiumBaseAmount <= 7500000) return 0;
-    return Math.round((premiumBaseAmount - 7500000) * 5.8) / 1000;
-  }, [premiumBaseAmount]);
-
-  const totalPremium = useMemo(() => {
-    if (premiumBaseAmount < 100000) return premiumTier1;
-    if (premiumBaseAmount < 500000) return premiumTier1 + premiumTier2;
-    if (premiumBaseAmount < 2500000) return premiumTier1 + premiumTier2 + premiumTier3;
-    if (premiumBaseAmount < 5000000)
-      return premiumTier1 + premiumTier2 + premiumTier3 + premiumTier4;
-    if (premiumBaseAmount < 7500000)
-      return premiumTier1 + premiumTier2 + premiumTier3 + premiumTier4 + premiumTier5;
-    return premiumTier1 + premiumTier2 + premiumTier3 + premiumTier4 + premiumTier5 + premiumTier6;
-  }, [
-    premiumBaseAmount,
-    premiumTier1,
-    premiumTier2,
-    premiumTier3,
-    premiumTier4,
-    premiumTier5,
-    premiumTier6,
-  ]);
-
-  const margin1Value = useMemo(() => {
-    const m = Number(sellMargins.margin1) || 0;
-    return m >= 1 ? 0 : combinedWithAdders / (1 - m);
-  }, [combinedWithAdders, sellMargins.margin1]);
-
-  const margin2Value = useMemo(() => {
-    const m = Number(sellMargins.margin2) || 0;
-    return m >= 1 ? 0 : combinedWithAdders / (1 - m);
-  }, [combinedWithAdders, sellMargins.margin2]);
-
-  const margin3Value = useMemo(() => {
-    const m = Number(sellMargins.margin3) || 0;
-    return m >= 1 ? 0 : combinedWithAdders / (1 - m);
-  }, [combinedWithAdders, sellMargins.margin3]);
-
-  const romh1 = useMemo(() => {
-    if (!laborHoursTotal) return 0;
-    return (margin1Value - combinedWithAdders) / laborHoursTotal;
-  }, [margin1Value, combinedWithAdders, laborHoursTotal]);
-
-  const romh2 = useMemo(() => {
-    if (!laborHoursTotal) return 0;
-    return (margin2Value - combinedWithAdders) / laborHoursTotal;
-  }, [margin2Value, combinedWithAdders, laborHoursTotal]);
-
-  const romh3 = useMemo(() => {
-    if (!laborHoursTotal) return 0;
-    return (margin3Value - combinedWithAdders) / laborHoursTotal;
-  }, [margin3Value, combinedWithAdders, laborHoursTotal]);
-
   const REPORTS_API =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/reports";
+
   const SHARED_REPORTS_API =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/reports/shared";
+
   const EXCEL_EXPORT_API =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/export-excel";
 
@@ -783,15 +350,19 @@ function Home() {
   const loadReports = useCallback(async () => {
     setReportsLoading(true);
     setReportsError("");
+
     try {
       const res = await fetch(REPORTS_API);
       const data = await res.json().catch(() => ({}));
+
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
       const list = Array.isArray(data)
         ? data
         : Array.isArray(data?.recordset)
         ? data.recordset
         : [];
+
       setReports(list);
     } catch (e) {
       console.error("❌ loadReports:", e);
@@ -800,7 +371,7 @@ function Home() {
     } finally {
       setReportsLoading(false);
     }
-  }, []);
+  }, [REPORTS_API]);
 
   const loadSharedReports = useCallback(async () => {
     if (!currentUserName) {
@@ -816,13 +387,17 @@ function Home() {
       const res = await fetch(
         `${SHARED_REPORTS_API}/${encodeURIComponent(currentUserName)}`
       );
+
       const data = await res.json().catch(() => ({}));
+
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
       const list = Array.isArray(data)
         ? data
         : Array.isArray(data?.recordset)
         ? data.recordset
         : [];
+
       setSharedReports(list);
     } catch (e) {
       console.error("❌ loadSharedReports:", e);
@@ -831,16 +406,19 @@ function Home() {
     } finally {
       setSharedReportsLoading(false);
     }
-  }, [currentUserName]);
+  }, [currentUserName, SHARED_REPORTS_API]);
 
   const loadShareUsernames = useCallback(async () => {
     setShareUsernamesLoading(true);
+
     try {
       const res = await fetch(REPORT_USERNAMES_API);
-      const data = await res.json().catch(() => ([]));
+      const data = await res.json().catch(() => []);
+
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
       const list = Array.isArray(data) ? data : [];
+
       setShareUsernames(
         list.map((x) => String(x?.Username || "").trim()).filter(Boolean)
       );
@@ -850,7 +428,7 @@ function Home() {
     } finally {
       setShareUsernamesLoading(false);
     }
-  }, []);
+  }, [REPORT_USERNAMES_API]);
 
   useEffect(() => {
     if (showHomeScreen) {
@@ -879,8 +457,10 @@ function Home() {
       const v = r?.Date ?? r?.date ?? "";
       if (!v) return "";
       if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return String(v);
+
       const d = new window.Date(v);
       if (Number.isNaN(d.getTime())) return "";
+
       return d.toISOString().slice(0, 10);
     })();
 
@@ -898,6 +478,7 @@ function Home() {
 
   const saveReport = useCallback(async () => {
     setReportsError("");
+
     try {
       const isEdit = !!editingId;
 
@@ -939,21 +520,32 @@ function Home() {
       });
 
       const data = await res.json().catch(() => ({}));
+
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
       await loadReports();
       await loadSharedReports();
       startNewReport();
+
       alert("✅ Report saved");
     } catch (e) {
       console.error("❌ saveReport:", e);
       alert("❌ Save failed: " + (e.message || e));
     }
-  }, [editingId, reportDraft, currentUserName, loadReports, loadSharedReports, startNewReport]);
+  }, [
+    editingId,
+    reportDraft,
+    currentUserName,
+    REPORTS_API,
+    loadReports,
+    loadSharedReports,
+    startNewReport,
+  ]);
 
   const deleteReport = useCallback(
     async (id) => {
       const rid = String(id || "").trim();
+
       if (!rid) return;
       if (!window.confirm("Delete this report?")) return;
 
@@ -961,23 +553,28 @@ function Home() {
         const res = await fetch(`${REPORTS_API}/${encodeURIComponent(rid)}`, {
           method: "DELETE",
         });
+
         const data = await res.json().catch(() => ({}));
+
         if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
         await loadReports();
         await loadSharedReports();
+
         if (editingId === rid) startNewReport();
       } catch (e) {
         console.error("❌ deleteReport:", e);
         alert("❌ Delete failed: " + (e.message || e));
       }
     },
-    [editingId, loadReports, loadSharedReports, startNewReport]
+    [editingId, REPORTS_API, loadReports, loadSharedReports, startNewReport]
   );
 
   const shareReport = useCallback((id) => {
     const rid = String(id || "").trim();
+
     if (!rid) return;
+
     setShareOpenForId(rid);
     setShareSelectedUsername("");
   }, []);
@@ -985,6 +582,7 @@ function Home() {
   const confirmShareReport = useCallback(
     async (rid) => {
       const clean = String(shareSelectedUsername || "").trim();
+
       if (!rid || !clean) return;
 
       try {
@@ -998,27 +596,32 @@ function Home() {
         });
 
         const data = await res.json().catch(() => ({}));
+
         if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
         alert("✅ Report shared");
+
         setShareOpenForId("");
         setShareSelectedUsername("");
+
         await loadSharedReports();
       } catch (e) {
         console.error("❌ shareReport:", e);
         alert("❌ Share failed: " + (e.message || e));
       }
     },
-    [shareSelectedUsername, loadSharedReports]
+    [shareSelectedUsername, SHARED_REPORTS_API, loadSharedReports]
   );
 
   const openReportFromRow = useCallback(
     (rid) => {
       const norm = normalizeGuid(rid);
+
       if (!norm) {
         alert("This report row is missing a valid ReportId (GUID).");
         return;
       }
+
       setReportId(norm);
       setReportIdDraft(norm);
       setShowHomeScreen(false);
@@ -1028,39 +631,49 @@ function Home() {
 
   const getStatusLabel = useCallback((status) => {
     const s = Number(status ?? 0);
+
     if (s === 1) return "Active";
     if (s === 2) return "Lost";
     if (s === 3) return "Complete";
+
     return "Bid";
   }, []);
 
   const parseDateValue = useCallback((v) => {
     if (!v) return 0;
+
     const d = new Date(v);
+
     return Number.isNaN(d.getTime()) ? 0 : d.getTime();
   }, []);
 
   const sortReports = useCallback(
     (list) => {
       const copy = [...list];
+
       copy.sort((a, b) => {
         const aName = String(a?.ReportName ?? "").toLowerCase();
         const bName = String(b?.ReportName ?? "").toLowerCase();
+
         const aDate = parseDateValue(a?.Date ?? a?.date);
         const bDate = parseDateValue(b?.Date ?? b?.date);
 
         switch (reportSortBy) {
           case "dateAsc":
             return aDate - bDate || aName.localeCompare(bName);
+
           case "nameAsc":
             return aName.localeCompare(bName) || bDate - aDate;
+
           case "nameDesc":
             return bName.localeCompare(aName) || bDate - aDate;
+
           case "dateDesc":
           default:
             return bDate - aDate || aName.localeCompare(bName);
         }
       });
+
       return copy;
     },
     [parseDateValue, reportSortBy]
@@ -1068,6 +681,7 @@ function Home() {
 
   const visibleReports = useMemo(() => {
     if (!currentUserName) return reports;
+
     return reports.filter(
       (r) =>
         String(r?.CreatedBy || "").trim().toLowerCase() ===
@@ -1083,6 +697,7 @@ function Home() {
 
     for (const r of visibleReports) {
       const status = Number(r?.Status ?? 0);
+
       if (status === 1) active.push(r);
       else if (status === 2) lost.push(r);
       else if (status === 3) complete.push(r);
@@ -1104,19 +719,43 @@ function Home() {
 
   const currentReportGroup = useMemo(() => {
     if (reportGroupFilter === "active") {
-      return { title: "Active Jobs", rows: groupedReports.active, isShared: false };
+      return {
+        title: "Active Jobs",
+        rows: groupedReports.active,
+        isShared: false,
+      };
     }
+
     if (reportGroupFilter === "lost") {
-      return { title: "Lost Jobs", rows: groupedReports.lost, isShared: false };
+      return {
+        title: "Lost Jobs",
+        rows: groupedReports.lost,
+        isShared: false,
+      };
     }
+
     if (reportGroupFilter === "complete") {
-      return { title: "Complete Jobs", rows: groupedReports.complete, isShared: false };
+      return {
+        title: "Complete Jobs",
+        rows: groupedReports.complete,
+        isShared: false,
+      };
     }
+
     if (reportGroupFilter === "bids") {
-      return { title: "Bid Jobs", rows: groupedReports.bids, isShared: false };
+      return {
+        title: "Bid Jobs",
+        rows: groupedReports.bids,
+        isShared: false,
+      };
     }
+
     if (reportGroupFilter === "shared") {
-      return { title: "Shared With Me", rows: sharedReportsSorted, isShared: true };
+      return {
+        title: "Shared With Me",
+        rows: sharedReportsSorted,
+        isShared: true,
+      };
     }
 
     return {
@@ -1133,22 +772,17 @@ function Home() {
 
   const currentReport = useMemo(() => {
     const cleanReportId = normalizeGuid(reportId);
+
     if (!cleanReportId) return null;
 
     const allKnownReports = [...reports, ...sharedReports];
+
     return (
       allKnownReports.find(
         (r) => normalizeGuid(r?.ReportId || r?.reportId || r?.id) === cleanReportId
       ) || null
     );
   }, [reportId, reports, sharedReports, normalizeGuid]);
-
-  const formatExcelDate = useCallback((v) => {
-    if (!v) return "";
-    const d = new Date(v);
-    if (Number.isNaN(d.getTime())) return String(v).slice(0, 10);
-    return d.toISOString().slice(0, 10);
-  }, []);
 
   const downloadBidExcel = useCallback(async () => {
     if (!reportId) {
@@ -1161,11 +795,15 @@ function Home() {
     try {
       const reportName = currentReport?.ReportName || "Bid Export";
       const safeProjectNumber = currentReport?.ProjectNumber || "";
-      const safeFileName = `${String(reportName || "Bid")
-        .replace(/[^a-z0-9-_ ]/gi, "")
-        .trim() || "Bid"}_BidTemplate.xlsx`;
+
+      const safeFileName = `${
+        String(reportName || "Bid")
+          .replace(/[^a-z0-9-_ ]/gi, "")
+          .trim() || "Bid"
+      }_BidTemplate.xlsx`;
 
       const lineItemCells = {};
+
       jobProgressRows.forEach((row, index) => {
         const excelRow = 13 + index;
         lineItemCells[`A${excelRow}`] = row.code;
@@ -1174,18 +812,18 @@ function Home() {
         lineItemCells[`F${excelRow}`] = row.notes || "";
       });
 
-    const payload = {
-  templateName: "Project_Import_Template.xlsx",
-  fileName: safeFileName,
-  sheetName: "Project Details",
-  cells: {
-    A2: safeProjectNumber,
-    B2: reportName,
-    C2: getStatusLabel(currentReport?.Status),
-    F2: currentReport?.CustomerName || "",
-    Z2: currentReport?.Address || "",
-  },
-};
+      const payload = {
+        templateName: "Project_Import_Template.xlsx",
+        fileName: safeFileName,
+        sheetName: "Project Details",
+        cells: {
+          A2: safeProjectNumber,
+          B2: reportName,
+          C2: getStatusLabel(currentReport?.Status),
+          F2: currentReport?.CustomerName || "",
+          Z2: currentReport?.Address || "",
+        },
+      };
 
       const res = await fetch(EXCEL_EXPORT_API, {
         method: "POST",
@@ -1200,12 +838,15 @@ function Home() {
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
+
       const a = document.createElement("a");
       a.href = url;
       a.download = safeFileName;
+
       document.body.appendChild(a);
       a.click();
       a.remove();
+
       window.URL.revokeObjectURL(url);
     } catch (e) {
       console.error("❌ downloadBidExcel:", e);
@@ -1213,23 +854,7 @@ function Home() {
     } finally {
       setExcelExportLoading(false);
     }
-  }, [
-    reportId,
-    currentReport,
-    jobProgressRows,
-    formatExcelDate,
-    getStatusLabel,
-    subTotalWithTax,
-    laborSubTotalWithTax,
-    combinedGrandTotalWithTax,
-    taxRate,
-    pct,
-    subTotal,
-    laborSubTotal,
-    addersTotal,
-    margin1Value,
-    EXCEL_EXPORT_API,
-  ]);
+  }, [reportId, currentReport, jobProgressRows, getStatusLabel, EXCEL_EXPORT_API]);
 
   if (selected === 1000) {
     return (
@@ -1243,11 +868,13 @@ function Home() {
 
   const ReportsTable = ({ title, rows, isShared = false }) => {
     if (!rows.length) return null;
+
     const showNotes = title === "Lost Jobs";
 
     return (
       <div className="mt-4">
         <h6 className="mb-2">{title}</h6>
+
         <div className="table-responsive">
           <table className="table table-sm table-striped align-middle">
             <thead>
@@ -1263,6 +890,7 @@ function Home() {
                 </th>
               </tr>
             </thead>
+
             <tbody>
               {rows.map((r) => {
                 const rid = String(r?.ReportId || r?.reportId || r?.id || "");
@@ -1275,7 +903,9 @@ function Home() {
                     <td>{r?.ProjectNumber ?? ""}</td>
                     <td>{getStatusLabel(r?.Status)}</td>
                     <td>{String(r?.Date ?? "").slice(0, 10)}</td>
+
                     {showNotes && <td>{r?.Notes ?? ""}</td>}
+
                     <td className="text-end">
                       <div className="btn-group">
                         <button
@@ -1293,12 +923,14 @@ function Home() {
                             >
                               Edit
                             </button>
+
                             <button
                               className="btn btn-sm btn-outline-info"
                               onClick={() => shareReport(rid)}
                             >
                               Share
                             </button>
+
                             <button
                               className="btn btn-sm btn-outline-danger"
                               onClick={() => deleteReport(rid)}
@@ -1327,6 +959,7 @@ function Home() {
                               }
                               disabled={shareUsernamesLoading}
                             />
+
                             <datalist id={`share-usernames-${rid}`}>
                               {shareUsernames.map((u) => (
                                 <option key={u} value={u} />
@@ -1343,6 +976,7 @@ function Home() {
                               >
                                 Cancel
                               </button>
+
                               <button
                                 className="btn btn-sm btn-success"
                                 disabled={!shareSelectedUsername}
@@ -1446,11 +1080,13 @@ function Home() {
                   <th>Notes</th>
                 </tr>
               </thead>
+
               <tbody>
                 {jobProgressRows.map((row) => (
                   <tr key={row.key}>
                     <td>{row.code}</td>
                     <td>{row.label}</td>
+
                     <td>
                       <div className="input-group input-group-sm">
                         <input
@@ -1468,6 +1104,7 @@ function Home() {
                         <span className="input-group-text">%</span>
                       </div>
                     </td>
+
                     <td>
                       <input
                         className="form-control form-control-sm"
@@ -1503,6 +1140,7 @@ function Home() {
             <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
               <div>
                 <h5 className="mb-0">Reports</h5>
+
                 <div className="small text-muted mt-1">
                   {azureUserLoading
                     ? "User: loading..."
@@ -1554,6 +1192,7 @@ function Home() {
                 >
                   Refresh
                 </button>
+
                 <button className="btn btn-primary btn-sm" onClick={startNewReport}>
                   + New
                 </button>
@@ -1572,6 +1211,7 @@ function Home() {
               <div className="row g-2">
                 <div className="col-md-4">
                   <label className="form-label small mb-1">Report Name</label>
+
                   <input
                     className="form-control"
                     value={reportDraft.ReportName}
@@ -1584,6 +1224,7 @@ function Home() {
 
                 <div className="col-md-3">
                   <label className="form-label small mb-1">Customer Name</label>
+
                   <input
                     className="form-control"
                     value={reportDraft.CustomerName}
@@ -1596,6 +1237,7 @@ function Home() {
 
                 <div className="col-md-5">
                   <label className="form-label small mb-1">Address</label>
+
                   <input
                     className="form-control"
                     value={reportDraft.Address}
@@ -1608,6 +1250,7 @@ function Home() {
 
                 <div className="col-md-2">
                   <label className="form-label small mb-1">Status</label>
+
                   <select
                     className="form-select"
                     value={Number(reportDraft.Status ?? 0)}
@@ -1628,6 +1271,7 @@ function Home() {
 
                 <div className="col-md-3">
                   <label className="form-label small mb-1">Date</label>
+
                   <input
                     type="date"
                     className="form-control"
@@ -1640,6 +1284,7 @@ function Home() {
 
                 <div className="col-md-3">
                   <label className="form-label small mb-1">Project # (4-digit)</label>
+
                   <input
                     className="form-control"
                     value={reportDraft.ProjectNumber}
@@ -1656,6 +1301,7 @@ function Home() {
                 {Number(reportDraft.Status ?? 0) === 2 && (
                   <div className="col-md-12">
                     <label className="form-label small mb-1">Notes</label>
+
                     <textarea
                       className="form-control"
                       rows={3}
@@ -1672,6 +1318,7 @@ function Home() {
                   <button className="btn btn-success" onClick={saveReport}>
                     {editingId ? "Save Changes" : "Create Report"}
                   </button>
+
                   <button className="btn btn-outline-secondary" onClick={startNewReport}>
                     Clear
                   </button>
@@ -1707,276 +1354,26 @@ function Home() {
   return (
     <div className="home-container">
       {viewMode === "totals" ? (
-        <>
-          <h1>Capital City</h1>
-
-          <div style={{ width: "100%", display: "block", textAlign: "left" }}>
-            <div className="d-flex justify-content-between align-items-center">
-              <h5 className="mb-0">Totals</h5>
-
-              <div className="d-flex gap-2">
-                <button
-                  className="btn btn-sm btn-success"
-                  onClick={downloadBidExcel}
-                  disabled={!reportId || excelExportLoading}
-                >
-                  {excelExportLoading ? "Exporting..." : "Export Excel"}
-                </button>
-
-                <button
-                  className="btn btn-sm btn-outline-secondary"
-                  onClick={() => setViewMode("input")}
-                  title="Go back to inputs"
-                >
-                  Back to Inputs
-                </button>
-              </div>
-            </div>
-
-            <div
-              style={{
-                marginTop: 10,
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                fontSize: 12,
-              }}
-            >
-              <span style={{ fontWeight: 700 }}>Tax %:</span>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                value={Number((taxRate * 100).toFixed(2))}
-                onChange={(e) => {
-                  const pctNum = Number(e.target.value);
-                  const next = Number.isFinite(pctNum)
-                    ? Math.max(0, pctNum) / 100
-                    : 0;
-                  setTaxRate(next);
-                }}
-                style={{ width: 90 }}
-              />
-              <span className="text-muted">(currently {pct(taxRate)})</span>
-            </div>
-
-            <div style={{ marginTop: 12, width: "fit-content" }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: TOTALS_COLS,
-                  columnGap: 14,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  opacity: 0.75,
-                  paddingBottom: 6,
-                }}
-              >
-                <div>Label</div>
-                <div style={{ textAlign: "right" }}>Hours / %</div>
-                <div style={{ textAlign: "right" }}>Total (included)</div>
-              </div>
-
-              <TotalsSectionTitle>Non-Labor</TotalsSectionTitle>
-
-              {Object.entries(totalsBySection).map(([k, v]) => (
-                <TotalsRow
-                  key={k}
-                  label={labelForSection(k)}
-                  hours={pct(taxRate)}
-                  total={money(withTax(v))}
-                />
-              ))}
-
-              <TotalsRow
-                label="Non-Labor Subtotal"
-                hours={pct(taxRate)}
-                total={money(subTotalWithTax)}
-                strong
-              />
-
-              <TotalsSectionTitle>Labor</TotalsSectionTitle>
-
-              {laborByType.length > 0 ? (
-                laborByType.map((t) => (
-                  <TotalsRow
-                    key={t.type}
-                    label={t.type}
-                    hours={`${Number(t.hours || 0).toFixed(2)} hrs`}
-                    total={money(withTax(t.cost))}
-                  />
-                ))
-              ) : laborSectionRows.length > 0 ? (
-                laborSectionRows.map((x) => (
-                  <TotalsRow
-                    key={x.key}
-                    label={x.label}
-                    hours={x.hours ? `${x.hours.toFixed(2)} hrs` : ""}
-                    total={money(withTax(x.cost))}
-                  />
-                ))
-              ) : (
-                <TotalsRow label="No labor totals yet." hours="" total="" muted />
-              )}
-
-              <TotalsRow
-                label="Labor Subtotal"
-                hours={`${laborHoursTotal.toFixed(2)} hrs`}
-                total={money(laborSubTotalWithTax)}
-                strong
-              />
-
-              <TotalsSectionTitle>Adders</TotalsSectionTitle>
-
-              <TotalsRow
-                label="Contingency"
-                hours={pct(contingencyRate)}
-                total={money(contingency)}
-              />
-
-              <TotalsAdderRow
-                checked={enabledAdders.perDiem}
-                onChange={() => toggleAdder("perDiem")}
-                label="Per Diem"
-                hours={`${laborHoursTotal.toFixed(2)} hrs`}
-                total={money(perDiemIncluded)}
-              />
-
-              <TotalsRow
-                label="Warranty"
-                hours={pct(warrantyRate)}
-                total={money(warranty)}
-              />
-
-              <TotalsRow
-                label="Consumables"
-                hours={pct(consumablesRate)}
-                total={money(consumables)}
-              />
-
-              <TotalsDriveTimeRow
-                checked={enabledAdders.driveTime}
-                onChange={() => toggleAdder("driveTime")}
-                value={driveTime}
-                onValueChange={(e) => setDriveTime(e.target.value)}
-                formulaHours={driveTimeFormulaHours}
-                laborHoursTotal={laborHoursTotal}
-                hoursInWorkWeek={hoursInWorkWeek}
-                total={money(driveTimeIncluded)}
-              />
-
-              <TotalsRow
-                label="Adders Total"
-                hours=""
-                total={money(addersTotal)}
-                strong
-              />
-
-              <TotalsRow
-                label="Non-Labor Grand Total + Adders"
-                hours=""
-                total={money(nonLaborWithAdders)}
-                strong
-              />
-
-              <TotalsRow
-                label="Combined Grand Total + Adders"
-                hours=""
-                total={money(combinedWithAdders)}
-                strong
-              />
-
-              <TotalsSectionTitle>Sell Price Targets</TotalsSectionTitle>
-
-              <TotalsSellRow
-                value={sellMargins.margin1}
-                onChange={(e) => setSellMargin("margin1", e.target.value)}
-                total={money(margin1Value)}
-                romh={money(romh1)}
-                laborHoursTotal={laborHoursTotal}
-                pct={pct}
-              />
-              <TotalsSellRow
-                value={sellMargins.margin2}
-                onChange={(e) => setSellMargin("margin2", e.target.value)}
-                total={money(margin2Value)}
-                romh={money(romh2)}
-                laborHoursTotal={laborHoursTotal}
-                pct={pct}
-              />
-              <TotalsSellRow
-                value={sellMargins.margin3}
-                onChange={(e) => setSellMargin("margin3", e.target.value)}
-                total={money(margin3Value)}
-                romh={money(romh3)}
-                laborHoursTotal={laborHoursTotal}
-                pct={pct}
-              />
-
-              <TotalsSectionTitle>Premium</TotalsSectionTitle>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: TOTALS_COLS,
-                  columnGap: 14,
-                  alignItems: "center",
-                  padding: "3px 0",
-                  fontSize: 12,
-                  lineHeight: 1.35,
-                }}
-              >
-                <div style={{ fontWeight: 700 }}>Premium Starting Amount</div>
-                <div style={{ textAlign: "right" }}>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={premiumBaseInput}
-                    onChange={(e) => setPremiumBaseInput(e.target.value)}
-                    placeholder={String(combinedWithAdders.toFixed(2))}
-                    style={{ width: 120, textAlign: "right" }}
-                  />
-                </div>
-                <div
-                  style={{
-                    textAlign: "right",
-                    fontWeight: 800,
-                    fontVariantNumeric: "tabular-nums",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {money(premiumBaseAmount)}
-                </div>
-              </div>
-
-              <TotalsRow label="Tier 1 Premium" total={money(premiumTier1)} />
-              {premiumTier2 > 0 && (
-                <TotalsRow label="Tier 2 Premium" total={money(premiumTier2)} />
-              )}
-              {premiumTier3 > 0 && (
-                <TotalsRow label="Tier 3 Premium" total={money(premiumTier3)} />
-              )}
-              {premiumTier4 > 0 && (
-                <TotalsRow label="Tier 4 Premium" total={money(premiumTier4)} />
-              )}
-              {premiumTier5 > 0 && (
-                <TotalsRow label="Tier 5 Premium" total={money(premiumTier5)} />
-              )}
-              {premiumTier6 > 0 && (
-                <TotalsRow label="Tier 6 Premium" total={money(premiumTier6)} />
-              )}
-
-              <TotalsRow
-                label="Total Premium"
-                hours=""
-                total={money(totalPremium)}
-                strong
-              />
-            </div>
-          </div>
-        </>
+        <TotalsPage
+          taxRate={taxRate}
+          setTaxRate={setTaxRate}
+          totalsBySection={totalsBySection}
+          laborSections={laborSections}
+          lineItemsBySection={lineItemsBySection}
+          laborLineItemsBySection={laborLineItemsBySection}
+          enabledAdders={enabledAdders}
+          toggleAdder={toggleAdder}
+          driveTime={driveTime}
+          setDriveTime={setDriveTime}
+          premiumBaseInput={premiumBaseInput}
+          setPremiumBaseInput={setPremiumBaseInput}
+          sellMargins={sellMargins}
+          setSellMargin={setSellMargin}
+          reportId={reportId}
+          excelExportLoading={excelExportLoading}
+          downloadBidExcel={downloadBidExcel}
+          onBackToInputs={() => setViewMode("input")}
+        />
       ) : viewMode === "progress" ? (
         <JobProgressOnly />
       ) : (
@@ -1987,6 +1384,7 @@ function Home() {
             <DbTestViewer
               reportId={reportId}
               onTotalsChange={(t) => setSectionCost("equipment", readCost(t))}
+              onLineItemsChange={(rows) => setSectionLineItems("equipment", rows)}
             />
           </div>
 
@@ -1994,6 +1392,7 @@ function Home() {
             <Labor
               reportId={reportId}
               onTotalsChange={(t) => setLaborSection("labor1", t)}
+              onLineItemsChange={(rows) => setLaborLineItems("labor1", rows)}
             />
           </div>
 
@@ -2001,6 +1400,7 @@ function Home() {
             <Demo
               reportId={reportId}
               onTotalsChange={(t) => setSectionCost("demo", readCost(t))}
+              onLineItemsChange={(rows) => setSectionLineItems("demo", rows)}
             />
           </div>
 
@@ -2008,6 +1408,7 @@ function Home() {
             <Labor2
               reportId={reportId}
               onTotalsChange={(t) => setLaborSection("labor2", t)}
+              onLineItemsChange={(rows) => setLaborLineItems("labor2", rows)}
             />
           </div>
 
@@ -2015,6 +1416,7 @@ function Home() {
             <Rough
               reportId={reportId}
               onTotalsChange={(t) => setSectionCost("rough", readCost(t))}
+              onLineItemsChange={(rows) => setSectionLineItems("rough", rows)}
             />
           </div>
 
@@ -2022,6 +1424,7 @@ function Home() {
             <Labor3
               reportId={reportId}
               onTotalsChange={(t) => setLaborSection("labor3", t)}
+              onLineItemsChange={(rows) => setLaborLineItems("labor3", rows)}
             />
           </div>
 
@@ -2029,6 +1432,7 @@ function Home() {
             <AirDistribution
               reportId={reportId}
               onTotalsChange={(t) => setSectionCost("air", readCost(t))}
+              onLineItemsChange={(rows) => setSectionLineItems("air", rows)}
             />
           </div>
 
@@ -2036,6 +1440,7 @@ function Home() {
             <Labor4
               reportId={reportId}
               onTotalsChange={(t) => setLaborSection("labor4", t)}
+              onLineItemsChange={(rows) => setLaborLineItems("labor4", rows)}
             />
           </div>
 
@@ -2043,6 +1448,7 @@ function Home() {
             <Electrical
               reportId={reportId}
               onTotalsChange={(t) => setSectionCost("electrical", readCost(t))}
+              onLineItemsChange={(rows) => setSectionLineItems("electrical", rows)}
             />
           </div>
 
@@ -2050,6 +1456,7 @@ function Home() {
             <Labor5
               reportId={reportId}
               onTotalsChange={(t) => setLaborSection("labor5", t)}
+              onLineItemsChange={(rows) => setLaborLineItems("labor5", rows)}
             />
           </div>
 
@@ -2057,6 +1464,7 @@ function Home() {
             <Piping
               reportId={reportId}
               onTotalsChange={(t) => setSectionCost("piping", readCost(t))}
+              onLineItemsChange={(rows) => setSectionLineItems("piping", rows)}
             />
           </div>
 
@@ -2064,6 +1472,7 @@ function Home() {
             <Labor6
               reportId={reportId}
               onTotalsChange={(t) => setLaborSection("labor6", t)}
+              onLineItemsChange={(rows) => setLaborLineItems("labor6", rows)}
             />
           </div>
 
@@ -2071,6 +1480,7 @@ function Home() {
             <Completion
               reportId={reportId}
               onTotalsChange={(t) => setSectionCost("completion", readCost(t))}
+              onLineItemsChange={(rows) => setSectionLineItems("completion", rows)}
             />
           </div>
 
@@ -2078,6 +1488,7 @@ function Home() {
             <Labor7
               reportId={reportId}
               onTotalsChange={(t) => setLaborSection("labor7", t)}
+              onLineItemsChange={(rows) => setLaborLineItems("labor7", rows)}
             />
           </div>
         </>

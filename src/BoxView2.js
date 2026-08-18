@@ -448,6 +448,7 @@ export default function BoxView2({ number, reportId: reportIdProp, onBack }) {
               body: JSON.stringify({
                 reportId,
                 ...toPayload(primary),
+                CostCodes: costCode,
               }),
             }
           );
@@ -477,6 +478,7 @@ export default function BoxView2({ number, reportId: reportIdProp, onBack }) {
                   body: JSON.stringify({
                     reportId,
                     ...toPayload(alt),
+                    CostCodes: costCode,
                     IsUsed: alt.used ? 1 : 0,
                   }),
                 }
@@ -500,6 +502,7 @@ export default function BoxView2({ number, reportId: reportIdProp, onBack }) {
                     reportId,
                     DemoId: demoId,
                     ...toPayload(alt),
+                    CostCodes: costCode,
                     IsUsed: alt.used ? 1 : 0,
                   }),
                 }
@@ -551,6 +554,7 @@ export default function BoxView2({ number, reportId: reportIdProp, onBack }) {
                 reportId,
                 DemoId: demoId,
                 ...toPayload(alt),
+                CostCodes: costCode,
                 IsUsed: alt.used ? 1 : 0,
               }),
             }
