@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 const TOTALS_COLS = "360px 120px 180px";
 
@@ -370,19 +370,27 @@ function TotalsPage({
   sellMargins,
   setSellMargin,
   reportId,
-  excelExportLoading,
-  downloadBidExcel,
   onBackToInputs,
 }) {
   const BUILDOPS_CREATE_QUOTE_API =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/buildops/quotes";
 
-  const BUILDOPS_TEST_PROPERTY_ID = "5542d55a-4a49-4c33-8db3-1de0afcde274";
+  const BUILDOPS_PROPERTIES_API =
+    "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/buildops/properties";
+
+  const REPORTS_API =
+    "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/reports";
+
   const BUILDOPS_TEST_DEPARTMENT_ID = "1f9ec39e-0e6b-409f-bdf5-cd47e732e729";
 
   const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [buildOpsQuoteLoading, setBuildOpsQuoteLoading] = useState(false);
   const [buildOpsQuoteResult, setBuildOpsQuoteResult] = useState("");
+
+  const [buildOpsProperties, setBuildOpsProperties] = useState([]);
+  const [selectedPropertyId, setSelectedPropertyId] = useState("");
+  const [propertiesLoading, setPropertiesLoading] = useState(false);
+  const [propertiesError, setPropertiesError] = useState("");
 
   const [quoteForm, setQuoteForm] = useState({
     name: "Capital City Test Quote",
@@ -393,7 +401,11 @@ function TotalsPage({
     expirationLength: "30",
   });
 
-  const [productIdsByLineItemId, setProductIdsByLineItemId] = useState({});
+  const [currentReportForBid, setCurrentReportForBid] = useState(null);
+  const [bidDraft, setBidDraft] = useState("");
+  const [bidLoading, setBidLoading] = useState(false);
+  const [bidSaving, setBidSaving] = useState(false);
+  const [bidMessage, setBidMessage] = useState("");
 
   const updateQuoteForm = useCallback((field, value) => {
     setQuoteForm((prev) => ({
@@ -402,10 +414,189 @@ function TotalsPage({
     }));
   }, []);
 
-  const openCreateQuoteForm = useCallback(() => {
-    setShowQuoteForm((prev) => !prev);
-    setBuildOpsQuoteResult("");
+  const loadCurrentReportForBid = useCallback(async () => {
+    if (!reportId) {
+      setCurrentReportForBid(null);
+      setBidDraft("");
+      return;
+    }
+
+    setBidLoading(true);
+    setBidMessage("");
+
+    try {
+      const res = await fetch(`${REPORTS_API}/${encodeURIComponent(reportId)}`);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+
+      setCurrentReportForBid(data);
+      setBidDraft(
+        data?.Bid === null || data?.Bid === undefined ? "" : String(data.Bid)
+      );
+    } catch (err) {
+      console.error("❌ loadCurrentReportForBid:", err);
+      setCurrentReportForBid(null);
+      setBidDraft("");
+      setBidMessage(`❌ Could not load bid: ${err.message || String(err)}`);
+    } finally {
+      setBidLoading(false);
+    }
+  }, [REPORTS_API, reportId]);
+
+  useEffect(() => {
+    loadCurrentReportForBid();
+  }, [loadCurrentReportForBid]);
+
+  const saveBid = useCallback(async () => {
+    if (!reportId) {
+      setBidMessage("❌ Missing reportId.");
+      return;
+    }
+
+    if (!currentReportForBid?.ReportName) {
+      setBidMessage("❌ Report is not loaded yet.");
+      return;
+    }
+
+    const cleanBid =
+      String(bidDraft || "").trim() === "" ? null : Number(bidDraft);
+
+    if (cleanBid !== null && !Number.isFinite(cleanBid)) {
+      setBidMessage("❌ Bid must be a valid number.");
+      return;
+    }
+
+    setBidSaving(true);
+    setBidMessage("");
+
+    try {
+      const payload = {
+        ReportName: currentReportForBid.ReportName,
+        Status: currentReportForBid.Status,
+        Date: currentReportForBid.Date,
+        CustomerName: currentReportForBid.CustomerName,
+        Address: currentReportForBid.Address,
+        ProjectNumber: currentReportForBid.ProjectNumber,
+        Bid: cleanBid,
+        Notes: currentReportForBid.Notes,
+      };
+
+      const res = await fetch(`${REPORTS_API}/${encodeURIComponent(reportId)}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+
+      setCurrentReportForBid(data);
+      setBidDraft(
+        data?.Bid === null || data?.Bid === undefined ? "" : String(data.Bid)
+      );
+      setBidMessage("✅ Bid saved.");
+    } catch (err) {
+      console.error("❌ saveBid:", err);
+      setBidMessage(`❌ Bid save failed: ${err.message || String(err)}`);
+    } finally {
+      setBidSaving(false);
+    }
+  }, [REPORTS_API, reportId, currentReportForBid, bidDraft]);
+
+  const normalizeBuildOpsProperties = useCallback((data) => {
+    const raw =
+      data?.properties?.data ||
+      data?.properties?.items ||
+      data?.properties?.results ||
+      data?.properties ||
+      data?.data ||
+      data?.items ||
+      data?.results ||
+      data;
+
+    return (Array.isArray(raw) ? raw : [])
+      .map((property) => ({
+        ...property,
+        id:
+          property?.id ||
+          property?.propertyId ||
+          property?.uuid ||
+          property?.PropertyId ||
+          "",
+        companyName:
+          property?.companyName ||
+          property?.CompanyName ||
+          property?.name ||
+          property?.Name ||
+          "",
+      }))
+      .filter((property) => property.id);
   }, []);
+
+  const fetchBuildOpsProperties = useCallback(async () => {
+    try {
+      setPropertiesLoading(true);
+      setPropertiesError("");
+
+      const res = await fetch(BUILDOPS_PROPERTIES_API, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+
+      const properties = normalizeBuildOpsProperties(data);
+
+      setBuildOpsProperties(properties);
+
+      setSelectedPropertyId((prev) => {
+        if (prev) return prev;
+        return properties?.[0]?.id || "";
+      });
+    } catch (err) {
+      console.error("❌ BuildOps properties fetch failed:", err);
+      setPropertiesError(err.message || String(err));
+      setBuildOpsProperties([]);
+      setSelectedPropertyId("");
+    } finally {
+      setPropertiesLoading(false);
+    }
+  }, [BUILDOPS_PROPERTIES_API, normalizeBuildOpsProperties]);
+
+  const openCreateQuoteForm = useCallback(() => {
+    setShowQuoteForm((prev) => {
+      const next = !prev;
+
+      if (next) {
+        fetchBuildOpsProperties();
+      }
+
+      return next;
+    });
+
+    setBuildOpsQuoteResult("");
+  }, [fetchBuildOpsProperties]);
+
+  useEffect(() => {
+    if (!showQuoteForm) return;
+    if (buildOpsProperties.length > 0) return;
+
+    fetchBuildOpsProperties();
+  }, [showQuoteForm, buildOpsProperties.length, fetchBuildOpsProperties]);
 
   const allEstimateLineItems = useMemo(() => {
     const sectionLabels = {
@@ -528,13 +719,6 @@ function TotalsPage({
     });
   }, [lineItemsBySection, laborLineItemsBySection]);
 
-  const updateLineItemProductId = useCallback((quoteLineKey, productId) => {
-    setProductIdsByLineItemId((prev) => ({
-      ...prev,
-      [quoteLineKey]: productId,
-    }));
-  }, []);
-
   const quoteItems = useMemo(() => {
     return allEstimateLineItems.map((item) => {
       const parsedCost = Number(
@@ -548,9 +732,7 @@ function TotalsPage({
         ? Number(parsedCost.toFixed(2))
         : 0;
 
-      const productId = String(
-        productIdsByLineItemId[item.quoteLineKey] || item.defaultProductId || ""
-      ).trim();
+      const productId = String(item.defaultProductId || "").trim();
 
       return {
         productId,
@@ -560,17 +742,14 @@ function TotalsPage({
         description: String(item.description || "").trim(),
       };
     });
-  }, [allEstimateLineItems, productIdsByLineItemId]);
+  }, [allEstimateLineItems]);
 
   const missingProductIdLineItems = useMemo(() => {
     return allEstimateLineItems.filter((item) => {
-      const productId = String(
-        productIdsByLineItemId[item.quoteLineKey] || item.defaultProductId || ""
-      ).trim();
-
+      const productId = String(item.defaultProductId || "").trim();
       return !productId;
     });
-  }, [allEstimateLineItems, productIdsByLineItemId]);
+  }, [allEstimateLineItems]);
 
   const submitBuildOpsQuote = useCallback(
     async (e) => {
@@ -580,8 +759,8 @@ function TotalsPage({
       setBuildOpsQuoteResult("");
 
       try {
-        if (!BUILDOPS_TEST_PROPERTY_ID) {
-          throw new Error("BuildOps propertyId is missing.");
+        if (!selectedPropertyId) {
+          throw new Error("Select a BuildOps property before creating the quote.");
         }
 
         if (!BUILDOPS_TEST_DEPARTMENT_ID) {
@@ -620,7 +799,7 @@ function TotalsPage({
         }
 
         const payload = {
-          propertyId: BUILDOPS_TEST_PROPERTY_ID,
+          propertyId: selectedPropertyId,
           departmentId: BUILDOPS_TEST_DEPARTMENT_ID,
           name: String(quoteForm.name || "").trim(),
           issueDescription: String(quoteForm.issueDescription || "").trim(),
@@ -678,6 +857,7 @@ ${JSON.stringify(data, null, 2)}`
       }
     },
     [
+      selectedPropertyId,
       quoteForm,
       allEstimateLineItems,
       missingProductIdLineItems,
@@ -1001,14 +1181,6 @@ ${JSON.stringify(data, null, 2)}`
 
           <div className="d-flex gap-2">
             <button
-              className="btn btn-sm btn-success"
-              onClick={downloadBidExcel}
-              disabled={!reportId || excelExportLoading}
-            >
-              {excelExportLoading ? "Exporting..." : "Export Excel"}
-            </button>
-
-            <button
               className="btn btn-sm btn-outline-primary"
               onClick={openCreateQuoteForm}
               disabled={buildOpsQuoteLoading}
@@ -1024,6 +1196,67 @@ ${JSON.stringify(data, null, 2)}`
               Back to Inputs Page
             </button>
           </div>
+        </div>
+
+        <div
+          className="border rounded p-3 mt-3 mb-2"
+          style={{
+            maxWidth: 520,
+            background: "#f8f9fa",
+          }}
+        >
+          <div className="d-flex justify-content-between align-items-center mb-2">
+            <h6 className="mb-0">Bid Amount</h6>
+
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary"
+              onClick={loadCurrentReportForBid}
+              disabled={bidLoading || bidSaving || !reportId}
+            >
+              {bidLoading ? "Loading..." : "Refresh"}
+            </button>
+          </div>
+
+          <div className="input-group input-group-sm">
+            <span className="input-group-text">$</span>
+
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              className="form-control"
+              value={bidDraft}
+              onChange={(e) => setBidDraft(e.target.value)}
+              placeholder="Blank until bid is entered"
+              disabled={bidLoading || bidSaving || !reportId}
+            />
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={saveBid}
+              disabled={bidLoading || bidSaving || !reportId}
+            >
+              {bidSaving ? "Saving..." : "Save Bid"}
+            </button>
+          </div>
+
+          <div className="small text-muted mt-1">
+            Leave blank to keep the bid as null.
+          </div>
+
+          {bidMessage && (
+            <div
+              className={
+                bidMessage.startsWith("✅")
+                  ? "small text-success mt-2"
+                  : "small text-danger mt-2"
+              }
+            >
+              {bidMessage}
+            </div>
+          )}
         </div>
 
         {showQuoteForm && (
@@ -1050,32 +1283,39 @@ ${JSON.stringify(data, null, 2)}`
               </div>
 
               <div className="alert alert-info py-2" style={{ fontSize: 12 }}>
-                Product IDs below are filled automatically by matching the line
-                item's Cost Code to the matching BuildOps product. You can still
-                manually overwrite any Product ID before submitting.
+                BuildOps product IDs are assigned automatically by matching each
+                line item's Cost Code to the matching BuildOps product.
               </div>
 
               <div className="row g-2">
                 <div className="col-md-6">
                   <label className="form-label mb-1" style={{ fontSize: 12 }}>
-                    Property ID
+                    Property
                   </label>
-                  <input
-                    className="form-control form-control-sm"
-                    value={BUILDOPS_TEST_PROPERTY_ID}
-                    readOnly
-                  />
-                </div>
 
-                <div className="col-md-6">
-                  <label className="form-label mb-1" style={{ fontSize: 12 }}>
-                    Department ID
-                  </label>
-                  <input
-                    className="form-control form-control-sm"
-                    value={BUILDOPS_TEST_DEPARTMENT_ID}
-                    readOnly
-                  />
+                  <select
+                    className="form-select form-select-sm"
+                    value={selectedPropertyId}
+                    onChange={(e) => setSelectedPropertyId(e.target.value)}
+                    disabled={propertiesLoading}
+                    required
+                  >
+                    <option value="">
+                      {propertiesLoading ? "Loading properties..." : "Select property"}
+                    </option>
+
+                    {buildOpsProperties.map((property) => (
+                      <option key={property.id} value={property.id}>
+                        {property.companyName || property.id}
+                      </option>
+                    ))}
+                  </select>
+
+                  {propertiesError && (
+                    <div className="text-danger mt-1" style={{ fontSize: 11 }}>
+                      {propertiesError}
+                    </div>
+                  )}
                 </div>
 
                 <div className="col-md-12">
@@ -1167,7 +1407,7 @@ ${JSON.stringify(data, null, 2)}`
                 <button
                   type="submit"
                   className="btn btn-sm btn-primary"
-                  disabled={buildOpsQuoteLoading}
+                  disabled={buildOpsQuoteLoading || propertiesLoading}
                 >
                   {buildOpsQuoteLoading
                     ? "Submitting..."
@@ -1206,7 +1446,6 @@ ${JSON.stringify(data, null, 2)}`
                         <tr>
                           <th style={{ width: 150 }}>Section</th>
                           <th style={{ width: 100 }}>Cost Code</th>
-                          <th style={{ width: 300 }}>Product ID</th>
                           <th>Description</th>
                           <th style={{ width: 150 }}>Type / Supplier</th>
                           <th style={{ width: 70 }} className="text-end">
@@ -1224,11 +1463,6 @@ ${JSON.stringify(data, null, 2)}`
 
                       <tbody>
                         {allEstimateLineItems.map((item) => {
-                          const productIdValue =
-                            productIdsByLineItemId[item.quoteLineKey] ||
-                            item.defaultProductId ||
-                            "";
-
                           const hasMatchedProduct = !!item.defaultProductId;
 
                           return (
@@ -1249,24 +1483,6 @@ ${JSON.stringify(data, null, 2)}`
                                 }
                               >
                                 {item.costCode || "Missing"}
-                              </td>
-
-                              <td>
-                                <input
-                                  className="form-control form-control-sm"
-                                  value={productIdValue}
-                                  onChange={(e) =>
-                                    updateLineItemProductId(
-                                      item.quoteLineKey,
-                                      e.target.value
-                                    )
-                                  }
-                                  placeholder="Paste BuildOps productId GUID"
-                                  style={{
-                                    fontSize: 11,
-                                    fontFamily: "monospace",
-                                  }}
-                                />
                               </td>
 
                               <td>{item.description}</td>

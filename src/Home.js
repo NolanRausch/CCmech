@@ -13,6 +13,7 @@ import Electrical from "./Electrical";
 import Piping from "./Piping";
 import Completion from "./Completion";
 import TotalsPage from "./TotalsPage";
+import Dashboard from "./Dashboard";
 
 // Labor components
 import Labor from "./Labor";
@@ -321,14 +322,10 @@ function Home() {
   const SHARED_REPORTS_API =
     "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/reports/shared";
 
-  const EXCEL_EXPORT_API =
-    "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api/export-excel";
-
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError, setReportsError] = useState("");
   const [reportSortBy, setReportSortBy] = useState("dateDesc");
-  const [excelExportLoading, setExcelExportLoading] = useState(false);
 
   const blankReport = useMemo(
     () => ({
@@ -784,78 +781,6 @@ function Home() {
     );
   }, [reportId, reports, sharedReports, normalizeGuid]);
 
-  const downloadBidExcel = useCallback(async () => {
-    if (!reportId) {
-      alert("Set Report ID first.");
-      return;
-    }
-
-    setExcelExportLoading(true);
-
-    try {
-      const reportName = currentReport?.ReportName || "Bid Export";
-      const safeProjectNumber = currentReport?.ProjectNumber || "";
-
-      const safeFileName = `${
-        String(reportName || "Bid")
-          .replace(/[^a-z0-9-_ ]/gi, "")
-          .trim() || "Bid"
-      }_BidTemplate.xlsx`;
-
-      const lineItemCells = {};
-
-      jobProgressRows.forEach((row, index) => {
-        const excelRow = 13 + index;
-        lineItemCells[`A${excelRow}`] = row.code;
-        lineItemCells[`B${excelRow}`] = row.label;
-        lineItemCells[`C${excelRow}`] = `${row.percent || 0}% Complete`;
-        lineItemCells[`F${excelRow}`] = row.notes || "";
-      });
-
-      const payload = {
-        templateName: "Project_Import_Template.xlsx",
-        fileName: safeFileName,
-        sheetName: "Project Details",
-        cells: {
-          A2: safeProjectNumber,
-          B2: reportName,
-          C2: getStatusLabel(currentReport?.Status),
-          F2: currentReport?.CustomerName || "",
-          Z2: currentReport?.Address || "",
-        },
-      };
-
-      const res = await fetch(EXCEL_EXPORT_API, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || `HTTP ${res.status}`);
-      }
-
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = safeFileName;
-
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-
-      window.URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error("❌ downloadBidExcel:", e);
-      alert("❌ Excel export failed: " + (e.message || e));
-    } finally {
-      setExcelExportLoading(false);
-    }
-  }, [reportId, currentReport, jobProgressRows, getStatusLabel, EXCEL_EXPORT_API]);
-
   if (selected === 1000) {
     return (
       <BoxView1
@@ -1024,11 +949,11 @@ function Home() {
 
         <button
           className="btn btn-primary btn-sm"
-          onClick={downloadBidExcel}
-          disabled={!reportId || excelExportLoading}
+          onClick={() => setViewMode("dashboard")}
+          disabled={!reportId}
           title={!reportId ? "Set Report ID first" : ""}
         >
-          {excelExportLoading ? "Exporting..." : "Export Excel"}
+          Dashboard
         </button>
 
         <button
@@ -1053,10 +978,10 @@ function Home() {
         <div className="d-flex gap-2">
           <button
             className="btn btn-sm btn-success"
-            onClick={downloadBidExcel}
-            disabled={!reportId || excelExportLoading}
+            onClick={() => setViewMode("dashboard")}
+            disabled={!reportId}
           >
-            {excelExportLoading ? "Exporting..." : "Export Excel"}
+            Dashboard
           </button>
 
           <button
@@ -1370,8 +1295,16 @@ function Home() {
           sellMargins={sellMargins}
           setSellMargin={setSellMargin}
           reportId={reportId}
-          excelExportLoading={excelExportLoading}
-          downloadBidExcel={downloadBidExcel}
+          onBackToInputs={() => setViewMode("input")}
+        />
+      ) : viewMode === "dashboard" ? (
+        <Dashboard
+          reportId={reportId}
+          currentReport={currentReport}
+          totalsBySection={totalsBySection}
+          laborSections={laborSections}
+          lineItemsBySection={lineItemsBySection}
+          laborLineItemsBySection={laborLineItemsBySection}
           onBackToInputs={() => setViewMode("input")}
         />
       ) : viewMode === "progress" ? (
