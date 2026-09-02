@@ -22,6 +22,16 @@ function Dashboard({ onBackToInputs }) {
     });
   };
 
+  const readBid = useCallback((report) => {
+    const raw = report?.Bid ?? report?.bid;
+
+    if (raw === null || raw === undefined || raw === "") return null;
+
+    const n = Number(String(raw).replace(/[^0-9.\-]/g, ""));
+
+    return Number.isFinite(n) ? n : null;
+  }, []);
+
   const getStatusLabel = useCallback((status) => {
     const s = Number(status ?? 0);
 
@@ -94,6 +104,16 @@ function Dashboard({ onBackToInputs }) {
       ? Math.max(...projectNumbers)
       : "";
 
+    const bidValues = reports
+      .map((r) => readBid(r))
+      .filter((n) => Number.isFinite(n));
+
+    const totalBidAmount = bidValues.reduce((sum, n) => sum + n, 0);
+    const reportsWithBidCount = bidValues.length;
+    const reportsWithoutBidCount = reports.length - reportsWithBidCount;
+    const averageBidAmount =
+      reportsWithBidCount > 0 ? totalBidAmount / reportsWithBidCount : 0;
+
     return {
       totalReports,
       bidCount,
@@ -101,8 +121,12 @@ function Dashboard({ onBackToInputs }) {
       lostCount,
       completeCount,
       highestProjectNumber,
+      totalBidAmount,
+      reportsWithBidCount,
+      reportsWithoutBidCount,
+      averageBidAmount,
     };
-  }, [reports]);
+  }, [reports, readBid]);
 
   const filteredReports = useMemo(() => {
     let rows = [...reports];
@@ -124,6 +148,9 @@ function Dashboard({ onBackToInputs }) {
       const aProject = Number(a?.ProjectNumber) || 0;
       const bProject = Number(b?.ProjectNumber) || 0;
 
+      const aBid = readBid(a) ?? -1;
+      const bBid = readBid(b) ?? -1;
+
       switch (sortBy) {
         case "dateAsc":
           return aDate - bDate || aName.localeCompare(bName);
@@ -143,6 +170,12 @@ function Dashboard({ onBackToInputs }) {
         case "projectAsc":
           return aProject - bProject || bDate - aDate;
 
+        case "bidDesc":
+          return bBid - aBid || bDate - aDate;
+
+        case "bidAsc":
+          return aBid - bBid || bDate - aDate;
+
         case "dateDesc":
         default:
           return bDate - aDate || aName.localeCompare(bName);
@@ -150,7 +183,7 @@ function Dashboard({ onBackToInputs }) {
     });
 
     return rows;
-  }, [reports, statusFilter, sortBy, parseDateValue]);
+  }, [reports, statusFilter, sortBy, parseDateValue, readBid]);
 
   return (
     <>
@@ -194,7 +227,7 @@ function Dashboard({ onBackToInputs }) {
         <div className="col-md-2">
           <div className="card">
             <div className="card-body">
-              <div className="small text-muted">Bid</div>
+              <div className="small text-muted">Bid Status</div>
               <h5 className="mb-0">{dashboardStats.bidCount}</h5>
             </div>
           </div>
@@ -239,6 +272,44 @@ function Dashboard({ onBackToInputs }) {
         </div>
       </div>
 
+      <div className="row g-3 mb-3">
+        <div className="col-md-3">
+          <div className="card">
+            <div className="card-body">
+              <div className="small text-muted">Total Bid Amount</div>
+              <h5 className="mb-0">{money(dashboardStats.totalBidAmount)}</h5>
+            </div>
+          </div>
+        </div>
+
+        <div className="col-md-3">
+          <div className="card">
+            <div className="card-body">
+              <div className="small text-muted">Average Bid Amount</div>
+              <h5 className="mb-0">{money(dashboardStats.averageBidAmount)}</h5>
+            </div>
+          </div>
+        </div>
+
+        <div className="col-md-3">
+          <div className="card">
+            <div className="card-body">
+              <div className="small text-muted">Reports With Bid</div>
+              <h5 className="mb-0">{dashboardStats.reportsWithBidCount}</h5>
+            </div>
+          </div>
+        </div>
+
+        <div className="col-md-3">
+          <div className="card">
+            <div className="card-body">
+              <div className="small text-muted">Reports Missing Bid</div>
+              <h5 className="mb-0">{dashboardStats.reportsWithoutBidCount}</h5>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="card">
         <div className="card-body">
           <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
@@ -271,6 +342,8 @@ function Dashboard({ onBackToInputs }) {
                 <option value="customerAsc">Sort: Customer A-Z</option>
                 <option value="projectDesc">Sort: Project # High-Low</option>
                 <option value="projectAsc">Sort: Project # Low-High</option>
+                <option value="bidDesc">Sort: Bid Amount High-Low</option>
+                <option value="bidAsc">Sort: Bid Amount Low-High</option>
               </select>
             </div>
           </div>
@@ -288,6 +361,9 @@ function Dashboard({ onBackToInputs }) {
                     <th>Customer</th>
                     <th>Address</th>
                     <th style={{ width: 120 }}>Project #</th>
+                    <th style={{ width: 130 }} className="text-end">
+                      Bid Amount
+                    </th>
                     <th style={{ width: 120 }}>Status</th>
                     <th style={{ width: 130 }}>Date</th>
                     <th>Created By</th>
@@ -303,12 +379,17 @@ function Dashboard({ onBackToInputs }) {
                       report?.id ||
                       `${report?.ReportName}-${report?.ProjectNumber}`;
 
+                    const bidAmount = readBid(report);
+
                     return (
                       <tr key={id}>
                         <td>{report?.ReportName || ""}</td>
                         <td>{report?.CustomerName || ""}</td>
                         <td>{report?.Address || ""}</td>
                         <td>{report?.ProjectNumber || ""}</td>
+                        <td className="text-end">
+                          {bidAmount === null ? "-" : money(bidAmount)}
+                        </td>
                         <td>{getStatusLabel(report?.Status)}</td>
                         <td>{formatDate(report?.Date ?? report?.date)}</td>
                         <td>{report?.CreatedBy || ""}</td>
