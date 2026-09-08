@@ -1,23 +1,28 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+
 import "bootstrap/dist/css/bootstrap.min.css";
+
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 const API_BASE =
   "https://ccmechconstruction-bjate8cvcha3ecgt.canadacentral-01.azurewebsites.net/api";
 
 // ✅ Rates (per hour) for hourly types
 const HOURLY_RATES = {
-  Welding: 70,
-  Mech: 75,
-  Service: 75,
+  "HVAC Technician": 75,
+  "Controls Technician": 75,
+  Installer: 65,
+  Helper: 60,
+  "Pipe Fitter": 70,
 };
 
 // ✅ All dropdown options (stored in LaborType)
 const LABOR_TYPES = [
-  "Welding",
-  "Mech",
-  "Service",
+  "HVAC Technician",
+  "Controls Technician",
+  "Installer",
+  "Helper",
+  "Pipe Fitter",
   "Subcontractor",
-  "Engineering",
 ];
 
 // -------------------------
@@ -62,7 +67,9 @@ export default function BoxViewLabor({
     (url) => {
       if (!reportId) return url;
       const hasQ = url.includes("?");
-      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(
+        reportId
+      )}`;
     },
     [reportId]
   );
@@ -108,7 +115,7 @@ export default function BoxViewLabor({
   );
 
   const isManualCostType = useCallback(
-    (t) => String(t) === "Subcontractor" || String(t) === "Engineering",
+    (t) => String(t) === "Subcontractor",
     []
   );
 
@@ -119,8 +126,10 @@ export default function BoxViewLabor({
     (r) => {
       const t = String(r?.laborType ?? "");
       if (!isHourlyType(t)) return r?.laborCost ?? "";
+
       const rate = HOURLY_RATES[t];
       const hours = parseNum(r?.laborHours);
+
       return (hours * rate).toFixed(2);
     },
     [isHourlyType, parseNum]
@@ -225,10 +234,14 @@ export default function BoxViewLabor({
         };
 
         if (!isLaborNameType(base.laborType)) base.laborName = "";
-        if (isManualCostType(base.laborType))
+
+        if (isManualCostType(base.laborType)) {
           return { ...base, laborHours: "NA" };
-        if (isHourlyType(base.laborType))
+        }
+
+        if (isHourlyType(base.laborType)) {
           return { ...base, laborCost: computeCostForRow(base) };
+        }
 
         return base;
       });
@@ -270,14 +283,17 @@ export default function BoxViewLabor({
 
         if (!isLaborNameType(t)) next.laborName = "";
 
-        if ("laborHours" in patch && isHourlyType(t))
+        if ("laborHours" in patch && isHourlyType(t)) {
           next.laborCost = computeCostForRow(next);
+        }
 
-        if ("laborCost" in patch && isHourlyType(t))
+        if ("laborCost" in patch && isHourlyType(t)) {
           next.laborCost = computeCostForRow(next);
+        }
 
-        if ("laborHours" in patch && isManualCostType(t))
+        if ("laborHours" in patch && isManualCostType(t)) {
           next.laborHours = "NA";
+        }
 
         return next;
       })
@@ -308,7 +324,8 @@ export default function BoxViewLabor({
       const hasType = LABOR_TYPES.includes(t);
 
       const hasNotes = !!(r?.notes && r.notes.trim());
-      const hasName = isLaborNameType(t) && !!(r?.laborName && r.laborName.trim());
+      const hasName =
+        isLaborNameType(t) && !!(r?.laborName && r.laborName.trim());
 
       if (!hasType) return !hasNotes;
 
@@ -317,10 +334,12 @@ export default function BoxViewLabor({
           r?.laborHours !== "" &&
           r?.laborHours != null &&
           r?.laborHours !== "NA";
+
         return !(hasHours || hasNotes);
       }
 
       const hasCost = r?.laborCost !== "" && r?.laborCost != null;
+
       return !(hasCost || hasNotes || hasName);
     },
     [isHourlyType, isLaborNameType]
@@ -370,6 +389,7 @@ export default function BoxViewLabor({
     return rows.reduce(
       (acc, r) => {
         if (isEmpty(r)) return acc;
+
         const t = String(r?.laborType ?? "");
 
         if (isHourlyType(t)) {
@@ -378,6 +398,7 @@ export default function BoxViewLabor({
         } else if (isManualCostType(t)) {
           acc.cost += parseNum(r.laborCost);
         }
+
         return acc;
       },
       { hours: 0, cost: 0 }
@@ -406,6 +427,7 @@ export default function BoxViewLabor({
           withReport(`${API_BASE}/labor/${encodeURIComponent(id)}`),
           { method: "DELETE" }
         );
+
         if (!res.ok) {
           throw new Error(
             data?.error || `DELETE failed for ${id} (HTTP ${res.status})`
@@ -424,8 +446,11 @@ export default function BoxViewLabor({
               body: JSON.stringify(toPayload(r)),
             }
           );
-          if (!res.ok)
+
+          if (!res.ok) {
             throw new Error(data?.error || `PUT failed (HTTP ${res.status})`);
+          }
+
           continue;
         }
 
@@ -433,8 +458,10 @@ export default function BoxViewLabor({
           method: "POST",
           body: JSON.stringify(toPayload(r)),
         });
-        if (!res.ok)
+
+        if (!res.ok) {
           throw new Error(data?.error || `POST failed (HTTP ${res.status})`);
+        }
       }
 
       return true;
@@ -450,7 +477,9 @@ export default function BoxViewLabor({
 
   const onHomeClick = useCallback(async () => {
     if (saving) return;
+
     const ok = await handleSubmit();
+
     if (ok) {
       await load();
       onBack?.();
@@ -463,7 +492,7 @@ export default function BoxViewLabor({
   const col = {
     idx: { width: "3.25rem", whiteSpace: "nowrap" },
     name: { width: "12rem" },
-    type: { width: "12rem" },
+    type: { width: "14rem" },
     hours: { width: "7rem", whiteSpace: "nowrap" },
     cost: { width: "9rem", whiteSpace: "nowrap" },
     actions: { width: "7rem", whiteSpace: "nowrap" },
@@ -485,9 +514,7 @@ export default function BoxViewLabor({
         <div className="text-center">
           <div className="fw-semibold">Labor Input</div>
           <div className="text-muted small">Code {String(codeNumber ?? "")}</div>
-          <div className="text-muted small">
-           
-          </div>
+          <div className="text-muted small"></div>
         </div>
 
         <button
@@ -502,27 +529,43 @@ export default function BoxViewLabor({
 
       <div className="table-responsive">
         <table className="table table-striped table-hover table-sm align-middle table-fixed">
-        <thead>
-  <tr>
-    <th style={{ ...col.idx, backgroundColor: headerColor, color: "#fff" }}>#</th>
-    <th style={{ ...col.name, backgroundColor: headerColor, color: "#fff" }}>
-      Labor Name
-    </th>
-    <th style={{ ...col.type, backgroundColor: headerColor, color: "#fff" }}>
-      Labor Type
-    </th>
-    <th style={{ ...col.hours, backgroundColor: headerColor, color: "#fff" }}>
-      Hours
-    </th>
-    <th style={{ ...col.cost, backgroundColor: headerColor, color: "#fff" }}>
-      Labor Cost
-    </th>
-    <th style={{ backgroundColor: headerColor, color: "#fff" }}>Notes</th>
-    <th style={{ ...col.actions, backgroundColor: headerColor, color: "#fff" }}>
-      Actions
-    </th>
-  </tr>
-</thead>
+          <thead>
+            <tr>
+              <th style={{ ...col.idx, backgroundColor: headerColor, color: "#fff" }}>
+                #
+              </th>
+
+              <th style={{ ...col.name, backgroundColor: headerColor, color: "#fff" }}>
+                Labor Name
+              </th>
+
+              <th style={{ ...col.type, backgroundColor: headerColor, color: "#fff" }}>
+                Labor Type
+              </th>
+
+              <th style={{ ...col.hours, backgroundColor: headerColor, color: "#fff" }}>
+                Hours
+              </th>
+
+              <th style={{ ...col.cost, backgroundColor: headerColor, color: "#fff" }}>
+                Labor Cost
+              </th>
+
+              <th style={{ backgroundColor: headerColor, color: "#fff" }}>
+                Notes
+              </th>
+
+              <th
+                style={{
+                  ...col.actions,
+                  backgroundColor: headerColor,
+                  color: "#fff",
+                }}
+              >
+                Actions
+              </th>
+            </tr>
+          </thead>
 
           <tbody>
             {rows.map((r, i) => {
@@ -559,6 +602,7 @@ export default function BoxViewLabor({
                       onChange={(e) => setLaborType(i, e.target.value)}
                     >
                       <option value="">Select…</option>
+
                       {LABOR_TYPES.map((opt) => (
                         <option key={opt} value={opt}>
                           {opt}
@@ -642,9 +686,7 @@ export default function BoxViewLabor({
         </table>
       </div>
 
-      <div className="text-muted mt-2 small">
- 
-      </div>
+      <div className="text-muted mt-2 small"></div>
 
       <style>{`
         .table-fixed { table-layout: fixed; width: 100%; }
@@ -652,4 +694,3 @@ export default function BoxViewLabor({
     </div>
   );
 }
-
