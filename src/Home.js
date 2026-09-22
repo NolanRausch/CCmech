@@ -82,7 +82,7 @@ function Home() {
   });
 
   const [enabledAdders, setEnabledAdders] = useState({
-    perDiem: true,
+    perDiem: false,
     driveTime: false,
   });
 
@@ -498,7 +498,7 @@ function Home() {
         ProjectNumber:
           reportDraft.ProjectNumber === "" || reportDraft.ProjectNumber == null
             ? null
-            : Number(reportDraft.ProjectNumber),
+            : String(reportDraft.ProjectNumber),
         Notes:
           Number(reportDraft.Status ?? 0) === 2
             ? String(reportDraft.Notes ?? "")

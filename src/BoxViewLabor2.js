@@ -6,13 +6,22 @@ const API_BASE =
 
 // ✅ Rates (per hour) for hourly types
 const HOURLY_RATES = {
-  Welding: 70,
-  Mech: 75,
-  Service: 75,
+  "HVAC Technician": 75,
+  "Controls Technician": 75,
+  Installer: 65,
+  Helper: 60,
+  "Pipe Fitter": 70,
 };
 
 // ✅ All dropdown options (stored in LaborType)
-const LABOR_TYPES = ["Welding", "Mech", "Service", "Subcontractor", "Engineering"];
+const LABOR_TYPES = [
+  "HVAC Technician",
+  "Controls Technician",
+  "Installer",
+  "Helper",
+  "Pipe Fitter",
+  "Subcontractor",
+];
 
 // -------------------------
 // reportId helpers (match other viewers)
@@ -31,7 +40,7 @@ export default function BoxViewLabor({
   codeNumber = "2000",
   onBack,
   reportId: reportIdProp,
-  onTotalsChange, // ✅ NEW: allow Home totals page to receive totals + byType
+  onTotalsChange,
 }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -57,7 +66,9 @@ export default function BoxViewLabor({
     (url) => {
       if (!reportId) return url;
       const hasQ = url.includes("?");
-      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(
+        reportId
+      )}`;
     },
     [reportId]
   );
@@ -81,7 +92,7 @@ export default function BoxViewLabor({
     () => ({
       laborId: undefined,
       codeNumber: String(codeNumber ?? ""),
-      laborType: "", // one of LABOR_TYPES
+      laborType: "",
       laborHours: "",
       laborCost: "",
       notes: "",
@@ -99,24 +110,27 @@ export default function BoxViewLabor({
   const fmtHours = useCallback((n) => parseNum(n).toFixed(2), [parseNum]);
 
   const isHourlyType = useCallback(
-    (t) => Object.prototype.hasOwnProperty.call(HOURLY_RATES, String(t || "").trim()),
+    (t) =>
+      Object.prototype.hasOwnProperty.call(
+        HOURLY_RATES,
+        String(t || "").trim()
+      ),
     []
   );
 
-  const isManualCostType = useCallback(
-    (t) => {
-      const tt = String(t || "").trim();
-      return tt === "Subcontractor" || tt === "Engineering";
-    },
-    []
-  );
+  const isManualCostType = useCallback((t) => {
+    const tt = String(t || "").trim();
+    return tt === "Subcontractor";
+  }, []);
 
   const computeCostForRow = useCallback(
     (r) => {
       const t = String(r?.laborType ?? "").trim();
       if (!isHourlyType(t)) return r?.laborCost ?? "";
+
       const rate = HOURLY_RATES[t];
       const hours = parseNum(r?.laborHours);
+
       return (hours * rate).toFixed(2);
     },
     [isHourlyType, parseNum]
@@ -126,7 +140,7 @@ export default function BoxViewLabor({
     (r, nextType) => {
       const t = String(nextType || "").trim();
 
-      // Manual-cost types: hours should display as NA and payload hours should be null
+      // Manual-cost type: hours should display as NA and payload hours should be null
       if (isManualCostType(t)) {
         return { ...r, laborType: t, laborHours: "NA" };
       }
@@ -138,6 +152,7 @@ export default function BoxViewLabor({
           laborType: t,
           laborHours: r.laborHours === "NA" ? "" : r.laborHours,
         };
+
         return { ...next, laborCost: computeCostForRow(next) };
       }
 
@@ -159,9 +174,12 @@ export default function BoxViewLabor({
       }
 
       const { res, data } = await fetchJson(
-        withReport(`${API_BASE}/labor/code/${encodeURIComponent(String(codeNumber))}`),
+        withReport(
+          `${API_BASE}/labor/code/${encodeURIComponent(String(codeNumber))}`
+        ),
         { method: "GET" }
       );
+
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
       const list = Array.isArray(data)
@@ -172,6 +190,7 @@ export default function BoxViewLabor({
 
       const mapped = list.map((r) => {
         const laborType = String(r.LaborType ?? "").trim();
+
         const base = {
           laborId: r.LaborId,
           codeNumber: r.CodeNumber ?? String(codeNumber ?? ""),
@@ -186,9 +205,11 @@ export default function BoxViewLabor({
         if (isManualCostType(base.laborType)) {
           return { ...base, laborHours: "NA" };
         }
+
         if (isHourlyType(base.laborType)) {
           return { ...base, laborCost: computeCostForRow(base) };
         }
+
         return base;
       });
 
@@ -223,17 +244,24 @@ export default function BoxViewLabor({
     setRows((prev) =>
       prev.map((r, i) => {
         if (i !== idx) return r;
+
         const next = { ...r, ...patch };
         const t = String(next.laborType ?? "").trim();
 
         // Hours changed on hourly types => recompute cost
-        if ("laborHours" in patch && isHourlyType(t)) next.laborCost = computeCostForRow(next);
+        if ("laborHours" in patch && isHourlyType(t)) {
+          next.laborCost = computeCostForRow(next);
+        }
 
-        // Cost edits on hourly types => ignore (computed)
-        if ("laborCost" in patch && isHourlyType(t)) next.laborCost = computeCostForRow(next);
+        // Cost edits on hourly types => ignore because cost is computed
+        if ("laborCost" in patch && isHourlyType(t)) {
+          next.laborCost = computeCostForRow(next);
+        }
 
-        // Prevent editing hours for manual-cost types (keep NA)
-        if ("laborHours" in patch && isManualCostType(t)) next.laborHours = "NA";
+        // Prevent editing hours for manual-cost types
+        if ("laborHours" in patch && isManualCostType(t)) {
+          next.laborHours = "NA";
+        }
 
         return next;
       })
@@ -241,7 +269,9 @@ export default function BoxViewLabor({
 
   const setLaborType = (idx, nextType) =>
     setRows((prev) =>
-      prev.map((r, i) => (i === idx ? normalizeRowAfterTypeChange(r, nextType) : r))
+      prev.map((r, i) =>
+        i === idx ? normalizeRowAfterTypeChange(r, nextType) : r
+      )
     );
 
   const addRow = () => setRows((prev) => [...prev, { ...blank }]);
@@ -249,9 +279,11 @@ export default function BoxViewLabor({
   const removeRow = (idx) => {
     setRows((prev) => {
       const row = prev[idx];
+
       if (row?.isExisting && row?.laborId) {
         setDeletedIds((d) => Array.from(new Set([...d, row.laborId])));
       }
+
       return prev.filter((_, i) => i !== idx);
     });
   };
@@ -265,14 +297,19 @@ export default function BoxViewLabor({
 
       if (isHourlyType(t)) {
         const hasHours =
-          r?.laborHours !== "" && r?.laborHours != null && r?.laborHours !== "NA";
+          r?.laborHours !== "" &&
+          r?.laborHours != null &&
+          r?.laborHours !== "NA";
+
         const hasNotes = r?.notes && r.notes.trim();
+
         return !(hasHours || hasNotes);
       }
 
-      // Manual-cost types
+      // Manual-cost type
       const hasCost = r?.laborCost !== "" && r?.laborCost != null;
       const hasNotes = r?.notes && r.notes.trim();
+
       return !(hasCost || hasNotes);
     },
     [isHourlyType]
@@ -288,7 +325,8 @@ export default function BoxViewLabor({
           ? null
           : Number(r.laborHours);
 
-      let laborCost = r.laborCost === "" || r.laborCost == null ? null : Number(r.laborCost);
+      let laborCost =
+        r.laborCost === "" || r.laborCost == null ? null : Number(r.laborCost);
 
       if (isHourlyType(t)) {
         laborCost = Number(computeCostForRow(r));
@@ -297,7 +335,7 @@ export default function BoxViewLabor({
       }
 
       return {
-        reportId, // ✅ required for POST/PUT per your backend rules
+        reportId,
         CodeNumber: String(codeNumber ?? ""),
         LaborType: laborType,
         LaborHours: laborHours,
@@ -312,6 +350,7 @@ export default function BoxViewLabor({
     return rows.reduce(
       (acc, r) => {
         if (isEmpty(r)) return acc;
+
         const t = String(r?.laborType ?? "").trim();
 
         if (isHourlyType(t)) {
@@ -320,13 +359,21 @@ export default function BoxViewLabor({
         } else if (isManualCostType(t)) {
           acc.cost += parseNum(r.laborCost);
         }
+
         return acc;
       },
       { hours: 0, cost: 0 }
     );
-  }, [rows, computeCostForRow, isEmpty, isHourlyType, isManualCostType, parseNum]);
+  }, [
+    rows,
+    computeCostForRow,
+    isEmpty,
+    isHourlyType,
+    isManualCostType,
+    parseNum,
+  ]);
 
-  // ✅ NEW: totals grouped by labor type
+  // ✅ totals grouped by labor type
   const totalsByType = useMemo(() => {
     const map = new Map();
 
@@ -349,21 +396,35 @@ export default function BoxViewLabor({
       }
 
       const prev = map.get(t) || { type: t, cost: 0, hours: 0 };
+
       prev.cost += cost;
       prev.hours += hours;
+
       map.set(t, prev);
     }
 
     return Array.from(map.values()).sort((a, b) => b.cost - a.cost);
-  }, [rows, computeCostForRow, isEmpty, isHourlyType, isManualCostType, parseNum]);
+  }, [
+    rows,
+    computeCostForRow,
+    isEmpty,
+    isHourlyType,
+    isManualCostType,
+    parseNum,
+  ]);
 
-  // ✅ NEW: publish totals to parent (Home.js) if provided
+  // ✅ publish totals to parent Home.js if provided
   useEffect(() => {
     if (typeof onTotalsChange !== "function") return;
-    onTotalsChange({ cost: totals.cost, hours: totals.hours, byType: totalsByType });
+
+    onTotalsChange({
+      cost: totals.cost,
+      hours: totals.hours,
+      byType: totalsByType,
+    });
   }, [onTotalsChange, totals.cost, totals.hours, totalsByType]);
 
-  // ✅ Submit changes (called by form submit)
+  // ✅ Submit changes
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -376,14 +437,17 @@ export default function BoxViewLabor({
         return;
       }
 
-      // 1) Delete removed existing rows (DELETE uses query/header)
+      // 1) Delete removed existing rows
       for (const id of deletedIds) {
         const { res, data } = await fetchJson(
           withReport(`${API_BASE}/labor/${encodeURIComponent(id)}`),
           { method: "DELETE" }
         );
+
         if (!res.ok) {
-          throw new Error(data?.error || `DELETE failed for ${id} (HTTP ${res.status})`);
+          throw new Error(
+            data?.error || `DELETE failed for ${id} (HTTP ${res.status})`
+          );
         }
       }
 
@@ -395,9 +459,16 @@ export default function BoxViewLabor({
         if (r.isExisting && r.laborId) {
           const { res, data } = await fetchJson(
             withReport(`${API_BASE}/labor/${encodeURIComponent(r.laborId)}`),
-            { method: "PUT", body: JSON.stringify(toPayload(r)) }
+            {
+              method: "PUT",
+              body: JSON.stringify(toPayload(r)),
+            }
           );
-          if (!res.ok) throw new Error(data?.error || `PUT failed (HTTP ${res.status})`);
+
+          if (!res.ok) {
+            throw new Error(data?.error || `PUT failed (HTTP ${res.status})`);
+          }
+
           continue;
         }
 
@@ -406,7 +477,10 @@ export default function BoxViewLabor({
           method: "POST",
           body: JSON.stringify(toPayload(r)),
         });
-        if (!res.ok) throw new Error(data?.error || `POST failed (HTTP ${res.status})`);
+
+        if (!res.ok) {
+          throw new Error(data?.error || `POST failed (HTTP ${res.status})`);
+        }
       }
 
       alert("✅ Labor saved!");
@@ -439,9 +513,14 @@ export default function BoxViewLabor({
         </div>
 
         <div className="d-flex gap-2">
-          <button type="button" className="btn btn-outline-primary" onClick={addRow}>
+          <button
+            type="button"
+            className="btn btn-outline-primary"
+            onClick={addRow}
+          >
             + Add Labor Row
           </button>
+
           <button type="button" className="btn btn-dark" onClick={onBack}>
             Back
           </button>
@@ -454,7 +533,7 @@ export default function BoxViewLabor({
             <thead style={{ backgroundColor: "#198754", color: "white" }}>
               <tr>
                 <th style={{ width: "4rem" }}>#</th>
-                <th style={{ width: "12rem" }}>Labor Type</th>
+                <th style={{ width: "14rem" }}>Labor Type</th>
                 <th style={{ width: "8rem" }}>Hours</th>
                 <th style={{ width: "9rem" }}>Labor Cost</th>
                 <th>Notes</th>
@@ -481,6 +560,7 @@ export default function BoxViewLabor({
                         onChange={(e) => setLaborType(i, e.target.value)}
                       >
                         <option value="">Select…</option>
+
                         {LABOR_TYPES.map((opt) => (
                           <option key={opt} value={opt}>
                             {opt}
@@ -490,7 +570,7 @@ export default function BoxViewLabor({
 
                       <div className="text-muted small mt-1">
                         {hourly
-                          ? `Rate: $${HOURLY_RATES[t]}/hr (Cost auto)`
+                          ? `Rate: ${fmtMoney(HOURLY_RATES[t])}/hr (Cost auto)`
                           : manual
                           ? "Manual cost"
                           : ""}
@@ -505,7 +585,9 @@ export default function BoxViewLabor({
                           step="0.25"
                           min="0"
                           value={r.laborHours === "NA" ? "" : r.laborHours}
-                          onChange={(e) => updateRow(i, { laborHours: e.target.value })}
+                          onChange={(e) =>
+                            updateRow(i, { laborHours: e.target.value })
+                          }
                           placeholder="0.00"
                         />
                       ) : (
@@ -520,9 +602,11 @@ export default function BoxViewLabor({
                         step="0.01"
                         min="0"
                         value={costValue}
-                        onChange={(e) => updateRow(i, { laborCost: e.target.value })}
+                        onChange={(e) =>
+                          updateRow(i, { laborCost: e.target.value })
+                        }
                         placeholder="0.00"
-                        readOnly={hourly} // ✅ computed for Welding/Mech/Service
+                        readOnly={hourly}
                       />
                     </td>
 
@@ -561,13 +645,17 @@ export default function BoxViewLabor({
         </div>
 
         <div className="d-flex gap-2 mt-3">
-          <button type="submit" className="btn btn-secondary" disabled={saving || !reportId}>
+          <button
+            type="submit"
+            className="btn btn-secondary"
+            disabled={saving || !reportId}
+          >
             {saving ? "Saving…" : "Submit changes"}
           </button>
         </div>
 
         <div className="text-muted mt-2 small">
-          Note: Removing an existing row will delete it on submit. test test test
+          Note: Removing an existing row will delete it on submit.
         </div>
       </form>
     </div>

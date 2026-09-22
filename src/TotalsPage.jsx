@@ -406,6 +406,7 @@ function TotalsPage({
   const [bidLoading, setBidLoading] = useState(false);
   const [bidSaving, setBidSaving] = useState(false);
   const [bidMessage, setBidMessage] = useState("");
+  const [bidManuallyChanged, setBidManuallyChanged] = useState(false);
 
   const updateQuoteForm = useCallback((field, value) => {
     setQuoteForm((prev) => ({
@@ -418,6 +419,7 @@ function TotalsPage({
     if (!reportId) {
       setCurrentReportForBid(null);
       setBidDraft("");
+      setBidManuallyChanged(false);
       return;
     }
 
@@ -433,13 +435,18 @@ function TotalsPage({
       }
 
       setCurrentReportForBid(data);
+      setBidManuallyChanged(false);
+
       setBidDraft(
-        data?.Bid === null || data?.Bid === undefined ? "" : String(data.Bid)
+        data?.Bid === null || data?.Bid === undefined || data?.Bid === ""
+          ? ""
+          : String(data.Bid)
       );
     } catch (err) {
       console.error("❌ loadCurrentReportForBid:", err);
       setCurrentReportForBid(null);
       setBidDraft("");
+      setBidManuallyChanged(false);
       setBidMessage(`❌ Could not load bid: ${err.message || String(err)}`);
     } finally {
       setBidLoading(false);
@@ -502,6 +509,7 @@ function TotalsPage({
       setBidDraft(
         data?.Bid === null || data?.Bid === undefined ? "" : String(data.Bid)
       );
+      setBidManuallyChanged(false);
       setBidMessage("✅ Bid saved.");
     } catch (err) {
       console.error("❌ saveBid:", err);
@@ -1034,15 +1042,58 @@ ${JSON.stringify(data, null, 2)}`
     [combinedGrandTotalWithTax, addersTotal]
   );
 
+  const calculatedDefaultBidAmount = useMemo(() => {
+    const n = Number(combinedWithAdders) || 0;
+    return n.toFixed(2);
+  }, [combinedWithAdders]);
+
+  useEffect(() => {
+    if (bidLoading || bidSaving) return;
+
+    const hasSavedBid =
+      currentReportForBid?.Bid !== null &&
+      currentReportForBid?.Bid !== undefined &&
+      currentReportForBid?.Bid !== "";
+
+    if (hasSavedBid) return;
+    if (bidManuallyChanged) return;
+
+    setBidDraft(calculatedDefaultBidAmount);
+  }, [
+    bidLoading,
+    bidSaving,
+    currentReportForBid?.Bid,
+    bidManuallyChanged,
+    calculatedDefaultBidAmount,
+  ]);
+
+  const revertBidToDefault = useCallback(() => {
+    setBidManuallyChanged(false);
+    setBidDraft(calculatedDefaultBidAmount);
+    setBidMessage("Bid amount reverted to the calculated default. Click Save Bid to store it.");
+  }, [calculatedDefaultBidAmount]);
+
+  const effectiveBidAmount = useMemo(() => {
+    const raw = String(bidDraft ?? "").trim();
+
+    if (raw === "") {
+      return Number(calculatedDefaultBidAmount) || 0;
+    }
+
+    const n = Number(raw);
+
+    return Number.isFinite(n) ? n : Number(calculatedDefaultBidAmount) || 0;
+  }, [bidDraft, calculatedDefaultBidAmount]);
+
   const nonLaborWithAdders = useMemo(
     () => grandTotalWithTax + addersTotal,
     [grandTotalWithTax, addersTotal]
   );
 
   const premiumBaseAmount = useMemo(() => {
-    if (String(premiumBaseInput).trim() === "") return combinedWithAdders;
+    if (String(premiumBaseInput).trim() === "") return effectiveBidAmount;
     return Number(premiumBaseInput) || 0;
-  }, [premiumBaseInput, combinedWithAdders]);
+  }, [premiumBaseInput, effectiveBidAmount]);
 
   const premiumTier1 = useMemo(() => {
     if (premiumBaseAmount < 100000) {
@@ -1227,10 +1278,22 @@ ${JSON.stringify(data, null, 2)}`
               min="0"
               className="form-control"
               value={bidDraft}
-              onChange={(e) => setBidDraft(e.target.value)}
-              placeholder="Blank until bid is entered"
+              onChange={(e) => {
+                setBidManuallyChanged(true);
+                setBidDraft(e.target.value);
+              }}
+              placeholder={calculatedDefaultBidAmount}
               disabled={bidLoading || bidSaving || !reportId}
             />
+
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
+              onClick={revertBidToDefault}
+              disabled={bidLoading || bidSaving || !reportId}
+            >
+              Revert to Default
+            </button>
 
             <button
               type="button"
@@ -1243,7 +1306,7 @@ ${JSON.stringify(data, null, 2)}`
           </div>
 
           <div className="small text-muted mt-1">
-            Leave blank to keep the bid as null.
+            Default bid amount is the calculated Combined Grand Total + Adders. Premium Starting Amount follows this bid unless you manually override the premium field.
           </div>
 
           {bidMessage && (
@@ -1251,7 +1314,9 @@ ${JSON.stringify(data, null, 2)}`
               className={
                 bidMessage.startsWith("✅")
                   ? "small text-success mt-2"
-                  : "small text-danger mt-2"
+                  : bidMessage.startsWith("❌")
+                  ? "small text-danger mt-2"
+                  : "small text-muted mt-2"
               }
             >
               {bidMessage}
@@ -1660,7 +1725,7 @@ ${JSON.stringify(data, null, 2)}`
             formulaHours={driveTimeFormulaHours}
             laborHoursTotal={laborHoursTotal}
             hoursInWorkWeek={hoursInWorkWeek}
-            total={money(driveTimeIncluded)}
+            total={money(driveTimeIncluded * 70)}
           />
 
           <TotalsRow
@@ -1713,7 +1778,7 @@ ${JSON.stringify(data, null, 2)}`
             pct={pct}
           />
 
-          <TotalsSectionTitle>Premium</TotalsSectionTitle>
+          <TotalsSectionTitle>Bond Calculator</TotalsSectionTitle>
 
           <div
             style={{
@@ -1735,7 +1800,7 @@ ${JSON.stringify(data, null, 2)}`
                 min="0"
                 value={premiumBaseInput}
                 onChange={(e) => setPremiumBaseInput(e.target.value)}
-                placeholder={String(combinedWithAdders.toFixed(2))}
+                placeholder={String(effectiveBidAmount.toFixed(2))}
                 style={{ width: 120, textAlign: "right" }}
               />
             </div>
