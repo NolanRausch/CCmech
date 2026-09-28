@@ -7,7 +7,7 @@ const DEFAULT_BUILDOPS_PRODUCT_IDS_BY_COST_CODE = {
   1002: "472daf83-4b92-48ee-8a57-5ddda352785a",
   1003: "5c660736-8038-476f-a281-1ab9e5ae88dc",
   1004: "bc23f7df-aecb-4326-9930-3c9690a64c13",
-  1005: "44a843bd-da99-4871-9e1e-5ce7facf6935",
+  1005: "44a843bd-da99-4871-9e1e5ce7facf6935",
   1006: "12e722d7-58da-48e7-9db2-dc8ade549c94",
   1007: "64afb821-7cab-4fcd-b280-5f11faa7ea84",
   1008: "58f5f9ba-5883-4609-8620-928adda95946",
@@ -361,6 +361,7 @@ function TotalsPage({
   laborSections,
   lineItemsBySection = {},
   laborLineItemsBySection = {},
+  subcontractorLaborItems = [],
   enabledAdders,
   toggleAdder,
   driveTime,
@@ -627,6 +628,16 @@ function TotalsPage({
       labor7: "Labor 7",
     };
 
+    const laborBaseCodeBySection = {
+      labor1: 1000,
+      labor2: 2000,
+      labor3: 3000,
+      labor4: 4000,
+      labor5: 5000,
+      labor6: 6000,
+      labor7: 7000,
+    };
+
     const parseMoneyNumber = (value) => {
       const n = Number(
         String(value ?? "")
@@ -689,31 +700,74 @@ function TotalsPage({
         })
     );
 
-    const laborRows = Object.entries(laborLineItemsBySection || {}).flatMap(
-      ([sectionKey, rows]) =>
-        (Array.isArray(rows) ? rows : []).map((row, index) => {
-          const id = row?.LaborId || row?.id || `${sectionKey}-${index}`;
+    const getNextCostCodeForLaborSection = (sectionKey, offset = 0) => {
+      const baseCode = laborBaseCodeBySection[sectionKey] || 1000;
+      const minCode = baseCode + 1;
+      const maxCode = baseCode + 999;
 
-          return {
-            id,
-            quoteLineKey: `labor-${sectionKey}-${id}-${index}`,
-            section: laborLabels[sectionKey] || sectionKey,
-            costCode: getCostCode(row),
-            description:
-              row?.LaborName ||
-              row?.LaborType ||
-              row?.Description ||
-              row?.description ||
-              "",
-            supplier: row?.LaborType || "",
-            cost: parseMoneyNumber(row?.LaborCost ?? row?.Cost ?? row?.cost ?? 0),
-            hours: Number(row?.LaborHours ?? row?.hours ?? 0) || 0,
-            notes: row?.Notes || row?.notes || "",
-          };
-        })
-    );
+      const matchingExistingCodes = nonLaborRows
+        .map((row) => Number(cleanCostCodeValue(row?.costCode)))
+        .filter(
+          (n) =>
+            Number.isFinite(n) &&
+            n >= minCode &&
+            n <= maxCode
+        );
 
-    const combinedRows = [...nonLaborRows, ...laborRows];
+      const startingCode =
+        matchingExistingCodes.length > 0
+          ? Math.max(...matchingExistingCodes) + 1
+          : minCode;
+
+      return String(startingCode + offset);
+    };
+
+    const subcontractorRows = (Array.isArray(subcontractorLaborItems)
+      ? subcontractorLaborItems
+      : []
+    ).map((row, index) => {
+      const sectionKey = row?.sectionKey || "labor1";
+      const id =
+        row?.LaborId ||
+        row?.laborId ||
+        row?.id ||
+        `${sectionKey}-${index}`;
+
+      const previousSubcontractorsInSameSection = subcontractorLaborItems
+        .slice(0, index)
+        .filter((x) => (x?.sectionKey || "labor1") === sectionKey).length;
+
+      const autoCostCode = getNextCostCodeForLaborSection(
+        sectionKey,
+        previousSubcontractorsInSameSection
+      );
+
+      return {
+        id,
+        quoteLineKey: `subcontractor-${sectionKey}-${id}-${index}`,
+        section:
+          row?.sectionLabel ||
+          laborLabels[sectionKey] ||
+          "Subcontractor Labor",
+        costCode: autoCostCode,
+        description:
+          row?.LaborName ||
+          row?.laborName ||
+          row?.Description ||
+          row?.description ||
+          row?.Notes ||
+          `Subcontractor ${index + 1}`,
+        supplier: "Subcontractor",
+        cost: parseMoneyNumber(
+          row?.LaborCost ?? row?.laborCost ?? row?.Cost ?? row?.cost ?? 0
+        ),
+        hours:
+          Number(row?.LaborHours ?? row?.laborHours ?? row?.hours ?? 0) || 0,
+        notes: row?.Notes || row?.notes || "",
+      };
+    });
+
+    const combinedRows = [...nonLaborRows, ...subcontractorRows];
 
     return combinedRows.map((item, index) => {
       const cleanCostCode = cleanCostCodeValue(item.costCode);
@@ -725,7 +779,7 @@ function TotalsPage({
           DEFAULT_BUILDOPS_PRODUCT_IDS_BY_COST_CODE[cleanCostCode] || "",
       };
     });
-  }, [lineItemsBySection, laborLineItemsBySection]);
+  }, [lineItemsBySection, laborLineItemsBySection, subcontractorLaborItems]);
 
   const quoteItems = useMemo(() => {
     return allEstimateLineItems.map((item) => {
@@ -1070,7 +1124,9 @@ ${JSON.stringify(data, null, 2)}`
   const revertBidToDefault = useCallback(() => {
     setBidManuallyChanged(false);
     setBidDraft(calculatedDefaultBidAmount);
-    setBidMessage("Bid amount reverted to the calculated default. Click Save Bid to store it.");
+    setBidMessage(
+      "Bid amount reverted to the calculated default. Click Save Bid to store it."
+    );
   }, [calculatedDefaultBidAmount]);
 
   const effectiveBidAmount = useMemo(() => {
@@ -1306,7 +1362,9 @@ ${JSON.stringify(data, null, 2)}`
           </div>
 
           <div className="small text-muted mt-1">
-            Default bid amount is the calculated Combined Grand Total + Adders. Premium Starting Amount follows this bid unless you manually override the premium field.
+            Default bid amount is the calculated Combined Grand Total + Adders.
+            Premium Starting Amount follows this bid unless you manually override
+            the premium field.
           </div>
 
           {bidMessage && (
@@ -1366,7 +1424,9 @@ ${JSON.stringify(data, null, 2)}`
                     required
                   >
                     <option value="">
-                      {propertiesLoading ? "Loading properties..." : "Select property"}
+                      {propertiesLoading
+                        ? "Loading properties..."
+                        : "Select property"}
                     </option>
 
                     {buildOpsProperties.map((property) => (
@@ -1502,7 +1562,8 @@ ${JSON.stringify(data, null, 2)}`
 
                 {allEstimateLineItems.length === 0 ? (
                   <div className="text-muted" style={{ fontSize: 12 }}>
-                    No individual line items have been received by the totals page yet.
+                    No individual line items have been received by the totals page
+                    yet.
                   </div>
                 ) : (
                   <div className="table-responsive">
@@ -1539,7 +1600,9 @@ ${JSON.stringify(data, null, 2)}`
                                   fontVariantNumeric: "tabular-nums",
                                   whiteSpace: "nowrap",
                                   fontWeight: 700,
-                                  color: hasMatchedProduct ? "green" : "#dc3545",
+                                  color: hasMatchedProduct
+                                    ? "green"
+                                    : "#dc3545",
                                 }}
                                 title={
                                   hasMatchedProduct
@@ -1557,7 +1620,9 @@ ${JSON.stringify(data, null, 2)}`
                               <td className="text-end">1</td>
 
                               <td className="text-end">
-                                {item.hours ? Number(item.hours).toFixed(2) : ""}
+                                {item.hours
+                                  ? Number(item.hours).toFixed(2)
+                                  : ""}
                               </td>
 
                               <td className="text-end">{money(item.cost)}</td>
@@ -1845,6 +1910,17 @@ ${JSON.stringify(data, null, 2)}`
             total={money(totalPremium)}
             strong
           />
+        </div>
+
+        <div
+          className="alert alert-warning py-2 mt-2"
+          style={{ fontSize: 12, maxWidth: 780 }}
+        >
+          <strong>Subcontractor debug:</strong>{" "}
+          {Array.isArray(subcontractorLaborItems)
+            ? subcontractorLaborItems.length
+            : "not an array"}{" "}
+          subcontractor rows received.
         </div>
       </div>
     </>

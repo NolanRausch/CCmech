@@ -781,6 +781,43 @@ function Home() {
     );
   }, [reportId, reports, sharedReports, normalizeGuid]);
 
+  const subcontractorLaborItems = useMemo(() => {
+    return Object.entries(laborLineItemsBySection || {}).flatMap(
+      ([sectionKey, rows]) => {
+        return (Array.isArray(rows) ? rows : [])
+          .filter((row) => {
+            const laborType = String(
+              row?.LaborType ?? row?.laborType ?? row?.type ?? ""
+            )
+              .trim()
+              .toLowerCase();
+
+            return laborType === "subcontractor";
+          })
+          .map((row) => ({
+            ...row,
+            sectionKey,
+            sectionLabel:
+              sectionKey === "labor1"
+                ? "Labor 1"
+                : sectionKey === "labor2"
+                ? "Labor 2"
+                : sectionKey === "labor3"
+                ? "Labor 3"
+                : sectionKey === "labor4"
+                ? "Labor 4"
+                : sectionKey === "labor5"
+                ? "Labor 5"
+                : sectionKey === "labor6"
+                ? "Labor 6"
+                : sectionKey === "labor7"
+                ? "Labor 7"
+                : sectionKey,
+          }));
+      }
+    );
+  }, [laborLineItemsBySection]);
+
   if (selected === 1000) {
     return (
       <BoxView1
@@ -1208,7 +1245,7 @@ function Home() {
                 </div>
 
                 <div className="col-md-3">
-                  <label className="form-label small mb-1">Project # (4-digit)</label>
+                  <label className="form-label small mb-1">Project #</label>
 
                   <input
                     className="form-control"
@@ -1286,6 +1323,7 @@ function Home() {
           laborSections={laborSections}
           lineItemsBySection={lineItemsBySection}
           laborLineItemsBySection={laborLineItemsBySection}
+          subcontractorLaborItems={subcontractorLaborItems}
           enabledAdders={enabledAdders}
           toggleAdder={toggleAdder}
           driveTime={driveTime}

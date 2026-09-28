@@ -1,12 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import "bootstrap/dist/css/bootstrap.min.css";
+
 import BoxViewLabor from "./BoxViewLabor";
 
-export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) {
+export default function LaborViewer({
+  onTotalsChange,
+  onLineItemsChange,
+  reportId: reportIdProp,
+}) {
   const [rows, setRows] = useState([]);
+
   const [error, setError] = useState(null);
+
   const [loading, setLoading] = useState(true);
+
   const [deletingId, setDeletingId] = useState(null);
+
   const [selected, setSelected] = useState(null);
 
   const API_BASE =
@@ -20,6 +30,7 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
   // -------------------------
   // reportId helpers
   // -------------------------
+
   const isGuid = useCallback((v) => {
     return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
       String(v || "").trim().replace(/[{}]/g, "")
@@ -37,12 +48,15 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
   // ✅ read reportId live (so it updates when Home changes it)
   const reportId = useMemo(() => {
     const fromProp = normalizeGuid(reportIdProp);
+
     if (fromProp) return fromProp;
 
     const fromGlobal = normalizeGuid(window.__REPORT_ID__);
+
     if (fromGlobal) return fromGlobal;
 
     const fromLS = normalizeGuid(localStorage.getItem("ccms_report_id"));
+
     if (fromLS) return fromLS;
 
     return "";
@@ -51,8 +65,12 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
   const withReport = useCallback(
     (url) => {
       if (!reportId) return url;
+
       const hasQ = url.includes("?");
-      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(
+        reportId
+      )}`;
     },
     [reportId]
   );
@@ -61,12 +79,14 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
 
   const parseNum = useCallback((val) => {
     const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
+
     return isNaN(n) ? 0 : n;
   }, []);
 
   const fmtMoney = useCallback(
     (val) => {
       const n = parseNum(val);
+
       return n.toLocaleString("en-US", {
         style: "currency",
         currency: "USD",
@@ -79,14 +99,28 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
 
   const fmtHours = useCallback((val) => parseNum(val).toFixed(2), [parseNum]);
 
+  const sendLineItems = useCallback(
+    (nextRows) => {
+      if (typeof onLineItemsChange === "function") {
+        onLineItemsChange(Array.isArray(nextRows) ? nextRows : []);
+      }
+    },
+    [onLineItemsChange]
+  );
+
   const fetchRows = useCallback(async () => {
     try {
       setLoading(true);
+
       setError(null);
 
       if (!reportId) {
         setRows([]);
+
+        sendLineItems([]);
+
         setError("Missing reportId (required).");
+
         return;
       }
 
@@ -97,10 +131,12 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
 
       const res = await fetch(url, {
         method: "GET",
+
         headers: { "x-report-id": reportId },
       });
 
       const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
         throw new Error(data?.error || `HTTP ${res.status}`);
       }
@@ -109,15 +145,23 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
         ? data
         : Array.isArray(data?.sample)
         ? data.sample
+        : Array.isArray(data?.recordset)
+        ? data.recordset
         : [];
 
       setRows(list);
+
+      sendLineItems(list);
     } catch (e) {
+      setRows([]);
+
+      sendLineItems([]);
+
       setError(e.message || String(e));
     } finally {
       setLoading(false);
     }
-  }, [API_BASE, CODE_NUMBER, reportId, withReport]);
+  }, [API_BASE, CODE_NUMBER, reportId, withReport, sendLineItems]);
 
   useEffect(() => {
     fetchRows();
@@ -127,19 +171,24 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
     try {
       if (!reportId) {
         alert("Delete failed: missing reportId");
+
         return;
       }
 
       setDeletingId(laborId);
 
       const url = withReport(`${API_BASE}/labor/${encodeURIComponent(laborId)}`);
+
       const res = await fetch(url, {
         method: "DELETE",
+
         headers: { "x-report-id": reportId },
       });
 
       const text = await res.text();
+
       let data;
+
       try {
         data = JSON.parse(text);
       } catch {
@@ -152,9 +201,16 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
         );
       }
 
-      setRows((prev) => prev.filter((r) => r.LaborId !== laborId));
+      setRows((prev) => {
+        const next = prev.filter((r) => r.LaborId !== laborId);
+
+        sendLineItems(next);
+
+        return next;
+      });
     } catch (e) {
       alert("Delete failed: " + (e.message || e));
+
       console.error(e);
     } finally {
       setDeletingId(null);
@@ -165,7 +221,9 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
   const totals = useMemo(() => {
     const acc = {
       laborHours: 0,
+
       laborCost: 0,
+
       byType: [],
     };
 
@@ -173,19 +231,26 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
 
     for (const r of rows) {
       const hours = parseNum(r?.LaborHours);
+
       const cost = parseNum(r?.LaborCost);
+
       const type = String(r?.LaborType ?? "").trim() || "Unspecified";
 
       acc.laborHours += hours;
+
       acc.laborCost += cost;
 
       const prev = map.get(type) || { type, cost: 0, hours: 0 };
+
       prev.cost += cost;
+
       prev.hours += hours;
+
       map.set(type, prev);
     }
 
     acc.byType = Array.from(map.values()).sort((a, b) => b.cost - a.cost);
+
     return acc;
   }, [rows, parseNum]);
 
@@ -196,22 +261,33 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
 
     const payload = {
       cost: Number(totals.laborCost) || 0,
+
       hours: Number(totals.laborHours) || 0,
+
       byType: totals.byType,
+
       label: `Labor ${CODE_NUMBER}`,
     };
 
-    const sig = `${payload.label}:${payload.cost.toFixed(4)}:${payload.hours.toFixed(
+    const sig = `${payload.label}:${payload.cost.toFixed(
       4
-    )}:${payload.byType?.length || 0}`;
+    )}:${payload.hours.toFixed(4)}:${payload.byType?.length || 0}`;
 
     if (lastSentRef.current === sig) return;
+
     lastSentRef.current = sig;
 
     onTotalsChange(payload);
-  }, [CODE_NUMBER, totals.laborCost, totals.laborHours, totals.byType, onTotalsChange]);
+  }, [
+    CODE_NUMBER,
+    totals.laborCost,
+    totals.laborHours,
+    totals.byType,
+    onTotalsChange,
+  ]);
 
   if (loading) return <p className="p-3">Loading...</p>;
+
   if (error) return <p className="p-3 text-danger">Error: {error}</p>;
 
   // ✅ open the editor for code 1000
@@ -222,6 +298,7 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
         reportId={reportId}
         onBack={() => {
           setSelected(null);
+
           fetchRows();
         }}
       />
@@ -230,11 +307,17 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
 
   const col = {
     idx: { width: "3.25rem", whiteSpace: "nowrap" },
+
     type: { width: "12rem", maxWidth: "12rem" },
+
     subName: { width: "14rem", maxWidth: "14rem" },
+
     hours: { width: "6.5rem", whiteSpace: "nowrap" },
+
     cost: { width: "9rem", whiteSpace: "nowrap" },
+
     actions: { width: "7rem", whiteSpace: "nowrap" },
+
     clamp: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   };
 
@@ -249,7 +332,7 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
         </button>
 
         <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
-         Labor
+          Labor
         </h5>
       </div>
 
@@ -257,8 +340,11 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
         className="table-responsive"
         style={{
           maxHeight: "500px",
+
           overflowY: "auto",
+
           border: "1px solid #ddd",
+
           borderRadius: "6px",
         }}
       >
@@ -267,20 +353,29 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
             className="table-dark"
             style={{
               position: "sticky",
+
               top: 0,
+
               zIndex: 2,
+
               backgroundColor: BLUE,
             }}
           >
             <tr>
               <th style={{ ...col.idx, backgroundColor: BLUE }}>#</th>
+
               <th style={{ ...col.type, backgroundColor: BLUE }}>Labor Type</th>
+
               <th style={{ ...col.subName, backgroundColor: BLUE }}>
                 Subcontractor Name
               </th>
+
               <th style={{ ...col.hours, backgroundColor: BLUE }}>Hours</th>
+
               <th style={{ ...col.cost, backgroundColor: BLUE }}>Labor Cost</th>
+
               <th style={{ backgroundColor: BLUE }}>Notes</th>
+
               <th style={{ ...col.actions, backgroundColor: BLUE }}>Actions</th>
             </tr>
           </thead>
@@ -290,13 +385,16 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
               <tr key={r.LaborId || `row-${i}`}>
                 <td style={col.idx}>{i + 1}</td>
 
-                <td style={{ ...col.type, ...col.clamp }}>{r.LaborType || ""}</td>
+                <td style={{ ...col.type, ...col.clamp }}>
+                  {r.LaborType || ""}
+                </td>
 
                 <td style={{ ...col.subName, ...col.clamp }}>
-                  {isSub(r.LaborType) ? (r.LaborName || "") : ""}
+                  {isSub(r.LaborType) ? r.LaborName || "" : ""}
                 </td>
 
                 <td style={col.hours}>{fmtHours(r.LaborHours)}</td>
+
                 <td style={col.cost}>{fmtMoney(r.LaborCost)}</td>
 
                 <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
@@ -316,16 +414,21 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
             ))}
           </tbody>
 
-<tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
-  <tr>
-    <th></th>
-    <th>Total</th>
-    <th></th>
-    <th>{fmtHours(totals.laborHours)}</th>
-    <th>{fmtMoney(totals.laborCost)}</th>
-    <th colSpan={2}></th>
-  </tr>
-</tfoot>
+          <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
+            <tr>
+              <th></th>
+
+              <th>Total</th>
+
+              <th></th>
+
+              <th>{fmtHours(totals.laborHours)}</th>
+
+              <th>{fmtMoney(totals.laborCost)}</th>
+
+              <th colSpan={2}></th>
+            </tr>
+          </tfoot>
         </table>
       </div>
 
