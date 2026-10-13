@@ -1,27 +1,47 @@
 // Home.js
+
 import React, { useCallback, useMemo, useState, useEffect } from "react";
+
 import "./Home.css";
+
 import "bootstrap/dist/css/bootstrap.min.css";
+
 import "bootstrap-icons/font/bootstrap-icons.css";
 
 import BoxView1 from "./BoxView1";
+
 import DbTestViewer from "./DbTestViewer";
+
 import Demo from "./Demo";
+
 import Rough from "./Rough";
+
 import AirDistribution from "./AIrDistribution";
+
 import Electrical from "./Electrical";
+
 import Piping from "./Piping";
+
 import Completion from "./Completion";
+
 import TotalsPage from "./TotalsPage";
+
 import Dashboard from "./Dashboard";
 
 // Labor components
+
 import Labor from "./Labor";
+
 import Labor2 from "./Labor2";
+
 import Labor3 from "./Labor3";
+
 import Labor4 from "./Labor4";
+
 import Labor5 from "./Labor5";
+
 import Labor6 from "./Labor6";
+
 import Labor7 from "./Labor7";
 
 function Home() {
@@ -152,6 +172,7 @@ function Home() {
   useEffect(() => {
     if (reportId) localStorage.setItem("ccms_report_id", reportId);
     else localStorage.removeItem("ccms_report_id");
+
     window.__REPORT_ID__ = reportId || "";
   }, [reportId]);
 
@@ -302,6 +323,7 @@ function Home() {
     try {
       const res = await fetch("/.auth/me", { credentials: "include" });
       const data = await res.json().catch(() => null);
+
       setAzureUser(data?.clientPrincipal || null);
     } catch (e) {
       console.error("❌ loadAzureUser:", e);
@@ -448,14 +470,17 @@ function Home() {
 
   const startEditReport = useCallback((r) => {
     const id = String(r?.ReportId || r?.reportId || r?.id || "").trim();
+
     setEditingId(id);
 
     const isoDate = (() => {
       const v = r?.Date ?? r?.date ?? "";
+
       if (!v) return "";
       if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return String(v);
 
       const d = new window.Date(v);
+
       if (Number.isNaN(d.getTime())) return "";
 
       return d.toISOString().slice(0, 10);
@@ -676,14 +701,26 @@ function Home() {
     [parseDateValue, reportSortBy]
   );
 
-  const visibleReports = useMemo(() => {
-    if (!currentUserName) return reports;
+  const RAUSCH_BID_VIEWER = "rauschj@ccmech.com";
 
-    return reports.filter(
-      (r) =>
-        String(r?.CreatedBy || "").trim().toLowerCase() ===
-        currentUserName.toLowerCase()
-    );
+  const visibleReports = useMemo(() => {
+    const cleanCurrentUser = String(currentUserName || "").trim().toLowerCase();
+
+    if (!cleanCurrentUser) return reports;
+
+    const isRauschBidViewer = cleanCurrentUser === RAUSCH_BID_VIEWER;
+
+    return reports.filter((r) => {
+      const createdBy = String(r?.CreatedBy || "").trim().toLowerCase();
+      const status = Number(r?.Status ?? 0);
+
+      const isOwnReport = createdBy === cleanCurrentUser;
+      const isBid = status === 0;
+
+      if (isRauschBidViewer && isBid) return true;
+
+      return isOwnReport;
+    });
   }, [reports, currentUserName]);
 
   const groupedReports = useMemo(() => {

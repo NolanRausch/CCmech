@@ -2,7 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import "bootstrap/dist/css/bootstrap.min.css";
 import BoxViewLabor from "./BoxViewLabor";
 
-export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) {
+export default function LaborViewer({
+  onTotalsChange,
+  onLineItemsChange,
+  reportId: reportIdProp,
+}) {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -16,7 +20,7 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
   const BLUE = "#312b2bff";
 
   // -------------------------
-  // reportId helpers (TEMPLATE)
+  // reportId helpers
   // -------------------------
   const isGuid = useCallback((v) => {
     return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(
@@ -48,13 +52,38 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
   const withReport = useCallback(
     (url) => {
       if (!reportId) return url;
+
       const hasQ = url.includes("?");
-      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(reportId)}`;
+
+      return `${url}${hasQ ? "&" : "?"}reportId=${encodeURIComponent(
+        reportId
+      )}`;
     },
     [reportId]
   );
 
-  const isSub = (t) => String(t || "").trim().toLowerCase() === "subcontractor";
+  const sectionKeyForCode = useCallback((codeNumber) => {
+    const code = String(codeNumber || "").trim();
+
+    if (code === "1000") return "labor1";
+    if (code === "2000") return "labor2";
+    if (code === "3000") return "labor3";
+    if (code === "4000") return "labor4";
+    if (code === "5000") return "labor5";
+    if (code === "6000") return "labor6";
+    if (code === "7000") return "labor7";
+
+    return "labor1";
+  }, []);
+
+  const isSub = useCallback((t) => {
+    return (
+      String(t || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s_-]/g, "") === "subcontractor"
+    );
+  }, []);
 
   const parseNum = useCallback((val) => {
     const n = parseFloat(String(val ?? "").replace(/[^0-9.\-]/g, ""));
@@ -64,6 +93,7 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
   const fmtMoney = useCallback(
     (val) => {
       const n = parseNum(val);
+
       return n.toLocaleString("en-US", {
         style: "currency",
         currency: "USD",
@@ -81,26 +111,38 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
       setLoading(true);
       setError(null);
 
-      const res = await fetch(withReport(`${API_BASE}/labor/code/7000`), {
+      const url = withReport(
+        `${API_BASE}/labor/code/${encodeURIComponent(CODE_NUMBER)}`
+      );
+
+      const res = await fetch(url, {
         method: "GET",
         headers: reportId ? { "x-report-id": reportId } : undefined,
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      const json = await res.json();
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+
+      const json = await res.json().catch(() => null);
+
       const list = Array.isArray(json)
         ? json
         : Array.isArray(json?.sample)
         ? json.sample
+        : Array.isArray(json?.recordset)
+        ? json.recordset
         : [];
 
       setRows(list);
     } catch (e) {
       setError(e.message || String(e));
+      setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [API_BASE, reportId, withReport]);
+  }, [API_BASE, CODE_NUMBER, reportId, withReport]);
 
   useEffect(() => {
     fetchRows();
@@ -110,16 +152,17 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
     try {
       setDeletingId(laborId);
 
-      const res = await fetch(
-        withReport(`${API_BASE}/labor/${encodeURIComponent(laborId)}`),
-        {
-          method: "DELETE",
-          headers: reportId ? { "x-report-id": reportId } : undefined,
-        }
-      );
+      const url = withReport(`${API_BASE}/labor/${encodeURIComponent(laborId)}`);
+
+      const res = await fetch(url, {
+        method: "DELETE",
+        headers: reportId ? { "x-report-id": reportId } : undefined,
+      });
 
       const text = await res.text();
+
       let data;
+
       try {
         data = JSON.parse(text);
       } catch {
@@ -152,7 +195,7 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
     );
   }, [rows, parseNum]);
 
-  // ✅ NEW: group totals by LaborType so Home can show Mech/Service/etc
+  // ✅ group totals by LaborType so Home can show Mech/Service/Subcontractor/etc
   const totalsByType = useMemo(() => {
     const map = new Map();
 
@@ -162,8 +205,10 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
       const cost = parseNum(r?.LaborCost);
 
       const prev = map.get(type) || { type, hours: 0, cost: 0 };
+
       prev.hours += hours;
       prev.cost += cost;
+
       map.set(type, prev);
     }
 
@@ -178,8 +223,8 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
     const payload = {
       cost: Number(totals.laborCost) || 0,
       hours: Number(totals.laborHours) || 0,
-      byType: totalsByType, // ✅ NEW
-      label: "Labor",
+      byType: totalsByType,
+      label: `Labor ${CODE_NUMBER}`,
     };
 
     const sig = `${payload.label}:${payload.cost.toFixed(
@@ -187,18 +232,98 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
     )}:${payload.hours.toFixed(4)}:${JSON.stringify(payload.byType)}`;
 
     if (lastSentRef.current === sig) return;
+
     lastSentRef.current = sig;
 
     onTotalsChange(payload);
-  }, [totals.laborCost, totals.laborHours, totalsByType, onTotalsChange]);
+  }, [
+    CODE_NUMBER,
+    totals.laborCost,
+    totals.laborHours,
+    totalsByType,
+    onTotalsChange,
+  ]);
+
+  // ✅ Export subcontractor labor rows up to Home.js / TotalsPage
+  const lastLineItemsSentRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof onLineItemsChange !== "function") return;
+
+    const sectionKey = sectionKeyForCode(CODE_NUMBER);
+
+    const lineItems = rows
+      .filter((r) => isSub(r?.LaborType))
+      .map((r, index) => {
+        const laborId = r?.LaborId || r?.laborId || r?.id || `sub-${index}`;
+
+        return {
+          ...r,
+
+          LaborId: laborId,
+
+          LaborType: r?.LaborType || "Subcontractor",
+
+          LaborName: r?.LaborName || r?.laborName || "",
+
+          Description:
+            r?.LaborName ||
+            r?.laborName ||
+            r?.Description ||
+            r?.description ||
+            r?.Notes ||
+            `Subcontractor ${index + 1}`,
+
+          Supplier: "Subcontractor",
+
+          LaborHours: r?.LaborHours ?? r?.laborHours ?? r?.hours ?? 0,
+
+          LaborCost: r?.LaborCost ?? r?.laborCost ?? r?.Cost ?? r?.cost ?? 0,
+
+          Cost: r?.LaborCost ?? r?.laborCost ?? r?.Cost ?? r?.cost ?? 0,
+
+          Notes: r?.Notes || r?.notes || "",
+
+          Section: `Labor ${CODE_NUMBER}`,
+
+          SectionKey: sectionKey,
+
+          sectionKey,
+
+          sectionLabel: `Labor ${CODE_NUMBER}`,
+
+          LineNumber: index + 1,
+        };
+      });
+
+    const sig = JSON.stringify(
+      lineItems.map((item) => ({
+        LaborId: item.LaborId,
+        LaborType: item.LaborType,
+        LaborName: item.LaborName,
+        LaborHours: item.LaborHours,
+        LaborCost: item.LaborCost,
+        Notes: item.Notes,
+        SectionKey: item.SectionKey,
+      }))
+    );
+
+    if (lastLineItemsSentRef.current === sig) return;
+
+    lastLineItemsSentRef.current = sig;
+
+    onLineItemsChange(lineItems);
+  }, [rows, onLineItemsChange, CODE_NUMBER, sectionKeyForCode, isSub]);
 
   if (loading) return <p className="p-3">Loading...</p>;
+
   if (error) return <p className="p-3 text-danger">Error: {error}</p>;
 
   if (selected === 7000) {
     return (
       <BoxViewLabor
         codeNumber={CODE_NUMBER}
+        reportId={reportId}
         onBack={() => {
           setSelected(null);
           fetchRows();
@@ -230,6 +355,12 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
         <h5 className="mb-0" style={{ color: BLUE, textTransform: "uppercase" }}>
           Labor
         </h5>
+
+        {!reportId && (
+          <span className="badge text-bg-warning ms-auto">
+            Missing valid reportId
+          </span>
+        )}
       </div>
 
       <div
@@ -253,13 +384,19 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
           >
             <tr>
               <th style={{ ...col.idx, backgroundColor: BLUE }}>#</th>
+
               <th style={{ ...col.type, backgroundColor: BLUE }}>Labor Type</th>
+
               <th style={{ ...col.subName, backgroundColor: BLUE }}>
                 Subcontractor Name
               </th>
+
               <th style={{ ...col.hours, backgroundColor: BLUE }}>Hours</th>
+
               <th style={{ ...col.cost, backgroundColor: BLUE }}>Labor Cost</th>
+
               <th style={{ backgroundColor: BLUE }}>Notes</th>
+
               <th style={{ ...col.actions, backgroundColor: BLUE }}>Actions</th>
             </tr>
           </thead>
@@ -274,10 +411,11 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
                 </td>
 
                 <td style={{ ...col.subName, ...col.clamp }}>
-                  {isSub(r.LaborType) ? (r.LaborName || "") : ""}
+                  {isSub(r.LaborType) ? r.LaborName || "" : ""}
                 </td>
 
                 <td style={col.hours}>{fmtHours(r.LaborHours)}</td>
+
                 <td style={col.cost}>{fmtMoney(r.LaborCost)}</td>
 
                 <td style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
@@ -297,16 +435,21 @@ export default function LaborViewer({ onTotalsChange, reportId: reportIdProp }) 
             ))}
           </tbody>
 
-       <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
-  <tr>
-    <th></th>
-    <th>Total</th>
-    <th></th>
-    <th>{fmtHours(totals.laborHours)}</th>
-    <th>{fmtMoney(totals.laborCost)}</th>
-    <th colSpan={2}></th>
-  </tr>
-</tfoot>
+          <tfoot className="table-secondary" style={{ position: "sticky", bottom: 0 }}>
+            <tr>
+              <th></th>
+
+              <th>Total</th>
+
+              <th></th>
+
+              <th>{fmtHours(totals.laborHours)}</th>
+
+              <th>{fmtMoney(totals.laborCost)}</th>
+
+              <th colSpan={2}></th>
+            </tr>
+          </tfoot>
         </table>
       </div>
 

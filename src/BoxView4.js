@@ -21,6 +21,8 @@ const DESCRIPTION_OPTIONS = [
   "Diffuser",
   "Insulation",
   "Snap Lock",
+  "Steel",
+  "Misc Welding Supplies"
 ];
 
 // ---------- Reusable row ----------
@@ -616,7 +618,7 @@ export default function BoxView4({ number, onBack, reportId: reportIdProp }) {
 
         <div className="text-center">
           <div className="fw-semibold">AirDistribution Input</div>
-          <div className="text-muted small">Code {number}</div>
+          <div className="text-muted small">Code 4000</div>
         </div>
 
         <button
