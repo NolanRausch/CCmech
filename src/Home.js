@@ -1133,7 +1133,16 @@ function Home() {
     return (
       <div className="home-container">
         <h1 className="text-center">Capital City</h1>
-
+<button
+  className="btn btn-success btn-sm"
+  onClick={() => {
+    setViewMode("dashboard");
+    setShowHomeScreen(false);
+  }}
+>
+  <i className="bi bi-speedometer2 me-1"></i>
+  Dashboard
+</button>
         <div className="card mt-3">
           <div className="card-body">
             <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
