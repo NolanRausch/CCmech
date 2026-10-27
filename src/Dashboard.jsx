@@ -88,59 +88,103 @@ function Dashboard({ onBackToInputs }) {
     loadReports();
   }, [loadReports]);
 
-  const dashboardStats = useMemo(() => {
-    const totalReports = reports.length;
+  // Calculate a separate set of statistics for each CreatedBy email.
+  const statsByUser = useMemo(() => {
+    const groups = new Map();
 
-    const bidCount = reports.filter((r) => Number(r?.Status ?? 0) === 0).length;
-    const activeCount = reports.filter((r) => Number(r?.Status ?? 0) === 1).length;
-    const lostCount = reports.filter((r) => Number(r?.Status ?? 0) === 2).length;
-    const completeCount = reports.filter((r) => Number(r?.Status ?? 0) === 3).length;
+    for (const report of reports) {
+      const email = String(
+        report?.CreatedBy ?? report?.createdBy ?? ""
+      ).trim();
 
-    const projectNumbers = reports
-      .map((r) => Number(r?.ProjectNumber))
-      .filter((n) => Number.isFinite(n) && n > 0);
+      const key = email.toLowerCase() || "(No email assigned)";
 
-    const highestProjectNumber = projectNumbers.length
-      ? Math.max(...projectNumbers)
-      : "";
+      if (!groups.has(key)) {
+        groups.set(key, {
+          email: email || "(No email assigned)",
+          rows: [],
+        });
+      }
 
-    const bidValues = reports
-      .map((r) => readBid(r))
-      .filter((n) => Number.isFinite(n));
+      groups.get(key).rows.push(report);
+    }
 
-    const totalBidAmount = bidValues.reduce((sum, n) => sum + n, 0);
-    const reportsWithBidCount = bidValues.length;
-    const reportsWithoutBidCount = reports.length - reportsWithBidCount;
-    const averageBidAmount =
-      reportsWithBidCount > 0 ? totalBidAmount / reportsWithBidCount : 0;
+    return Array.from(groups.values())
+      .map(({ email, rows }) => {
+        const bidValues = rows
+          .map(readBid)
+          .filter((value) => value !== null);
 
-    return {
-      totalReports,
-      bidCount,
-      activeCount,
-      lostCount,
-      completeCount,
-      highestProjectNumber,
-      totalBidAmount,
-      reportsWithBidCount,
-      reportsWithoutBidCount,
-      averageBidAmount,
-    };
+        const totalBidAmount = bidValues.reduce(
+          (sum, amount) => sum + amount,
+          0
+        );
+
+        const projectNumbers = rows
+          .map((report) => Number(report?.ProjectNumber))
+          .filter(
+            (number) => Number.isFinite(number) && number > 0
+          );
+
+        return {
+          email,
+
+          totalReports: rows.length,
+
+          bidCount: rows.filter(
+            (r) => Number(r?.Status ?? 0) === 0
+          ).length,
+
+          activeCount: rows.filter(
+            (r) => Number(r?.Status ?? 0) === 1
+          ).length,
+
+          lostCount: rows.filter(
+            (r) => Number(r?.Status ?? 0) === 2
+          ).length,
+
+          completeCount: rows.filter(
+            (r) => Number(r?.Status ?? 0) === 3
+          ).length,
+
+          highestProjectNumber: projectNumbers.length
+            ? Math.max(...projectNumbers)
+            : "",
+
+          totalBidAmount,
+
+          reportsWithBidCount: bidValues.length,
+
+          reportsWithoutBidCount: rows.length - bidValues.length,
+
+          averageBidAmount: bidValues.length
+            ? totalBidAmount / bidValues.length
+            : 0,
+        };
+      })
+      .sort((a, b) => a.email.localeCompare(b.email));
   }, [reports, readBid]);
 
   const filteredReports = useMemo(() => {
     let rows = [...reports];
 
     if (statusFilter !== "all") {
-      rows = rows.filter((r) => String(Number(r?.Status ?? 0)) === statusFilter);
+      rows = rows.filter(
+        (r) => String(Number(r?.Status ?? 0)) === statusFilter
+      );
     }
 
     rows.sort((a, b) => {
       const aName = String(a?.ReportName ?? "").toLowerCase();
       const bName = String(b?.ReportName ?? "").toLowerCase();
 
-      const aCustomer = String(a?.CustomerName ?? "").toLowerCase();
-      const bCustomer = String(b?.CustomerName ?? "").toLowerCase();
+      const aCustomer = String(
+        a?.CustomerName ?? ""
+      ).toLowerCase();
+
+      const bCustomer = String(
+        b?.CustomerName ?? ""
+      ).toLowerCase();
 
       const aDate = parseDateValue(a?.Date ?? a?.date);
       const bDate = parseDateValue(b?.Date ?? b?.date);
@@ -162,7 +206,10 @@ function Dashboard({ onBackToInputs }) {
           return bName.localeCompare(aName) || bDate - aDate;
 
         case "customerAsc":
-          return aCustomer.localeCompare(bCustomer) || aName.localeCompare(bName);
+          return (
+            aCustomer.localeCompare(bCustomer) ||
+            aName.localeCompare(bName)
+          );
 
         case "projectDesc":
           return bProject - aProject || bDate - aDate;
@@ -205,110 +252,95 @@ function Dashboard({ onBackToInputs }) {
             className="btn btn-sm btn-outline-secondary"
             onClick={onBackToInputs}
           >
-            Back to Inputs
+            Back
           </button>
         </div>
       </div>
 
       {reportsError && (
-        <div className="alert alert-danger py-2">{reportsError}</div>
+        <div className="alert alert-danger py-2">
+          {reportsError}
+        </div>
       )}
 
-      <div className="row g-3 mb-3">
-        <div className="col-md-2">
-          <div className="card">
-            <div className="card-body">
-              <div className="small text-muted">Total Reports</div>
-              <h5 className="mb-0">{dashboardStats.totalReports}</h5>
-            </div>
-          </div>
+      {statsByUser.length === 0 && !reportsLoading && (
+        <div className="text-muted mb-3">
+          No reports available for dashboard statistics.
         </div>
+      )}
 
-        <div className="col-md-2">
-          <div className="card">
-            <div className="card-body">
-              <div className="small text-muted">Bid Status</div>
-              <h5 className="mb-0">{dashboardStats.bidCount}</h5>
-            </div>
-          </div>
-        </div>
+      {/* Separate dashboard statistics for each user */}
 
-        <div className="col-md-2">
-          <div className="card">
-            <div className="card-body">
-              <div className="small text-muted">Active</div>
-              <h5 className="mb-0">{dashboardStats.activeCount}</h5>
-            </div>
-          </div>
-        </div>
+      {statsByUser.map((stats) => (
+        <section key={stats.email} className="mb-4">
+          <h6 className="mb-3">{stats.email}</h6>
 
-        <div className="col-md-2">
-          <div className="card">
-            <div className="card-body">
-              <div className="small text-muted">Lost</div>
-              <h5 className="mb-0">{dashboardStats.lostCount}</h5>
-            </div>
-          </div>
-        </div>
+          <div className="row g-3 mb-3">
+            {[
+              ["Total Reports", stats.totalReports],
+              ["Bid Status", stats.bidCount],
+              ["Active", stats.activeCount],
+              ["Lost", stats.lostCount],
+              ["Complete", stats.completeCount],
+              [
+                "Highest Project #",
+                stats.highestProjectNumber || "-",
+              ],
+            ].map(([label, value]) => (
+              <div className="col-md-2" key={label}>
+                <div className="card h-100">
+                  <div className="card-body">
+                    <div className="small text-muted">
+                      {label}
+                    </div>
 
-        <div className="col-md-2">
-          <div className="card">
-            <div className="card-body">
-              <div className="small text-muted">Complete</div>
-              <h5 className="mb-0">{dashboardStats.completeCount}</h5>
-            </div>
+                    <h5 className="mb-0">
+                      {value}
+                    </h5>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
 
-        <div className="col-md-2">
-          <div className="card">
-            <div className="card-body">
-              <div className="small text-muted">Highest Project #</div>
-              <h5 className="mb-0">
-                {dashboardStats.highestProjectNumber || "-"}
-              </h5>
-            </div>
-          </div>
-        </div>
-      </div>
+          <div className="row g-3 mb-3">
+            {[
+              [
+                "Total Bid Amount",
+                money(stats.totalBidAmount),
+              ],
+              [
+                "Average Bid Amount",
+                money(stats.averageBidAmount),
+              ],
+              [
+                "Reports With Bid",
+                stats.reportsWithBidCount,
+              ],
+              [
+                "Reports Missing Bid",
+                stats.reportsWithoutBidCount,
+              ],
+            ].map(([label, value]) => (
+              <div className="col-md-3" key={label}>
+                <div className="card h-100">
+                  <div className="card-body">
+                    <div className="small text-muted">
+                      {label}
+                    </div>
 
-      <div className="row g-3 mb-3">
-        <div className="col-md-3">
-          <div className="card">
-            <div className="card-body">
-              <div className="small text-muted">Total Bid Amount</div>
-              <h5 className="mb-0">{money(dashboardStats.totalBidAmount)}</h5>
-            </div>
+                    <h5 className="mb-0">
+                      {value}
+                    </h5>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
+        </section>
+      ))}
 
-        <div className="col-md-3">
-          <div className="card">
-            <div className="card-body">
-              <div className="small text-muted">Average Bid Amount</div>
-              <h5 className="mb-0">{money(dashboardStats.averageBidAmount)}</h5>
-            </div>
-          </div>
-        </div>
-
-        <div className="col-md-3">
-          <div className="card">
-            <div className="card-body">
-              <div className="small text-muted">Reports With Bid</div>
-              <h5 className="mb-0">{dashboardStats.reportsWithBidCount}</h5>
-            </div>
-          </div>
-        </div>
-
-        <div className="col-md-3">
-          <div className="card">
-            <div className="card-body">
-              <div className="small text-muted">Reports Missing Bid</div>
-              <h5 className="mb-0">{dashboardStats.reportsWithoutBidCount}</h5>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* All Reports table */}
 
       <div className="card">
         <div className="card-body">
@@ -319,7 +351,9 @@ function Dashboard({ onBackToInputs }) {
               <select
                 className="form-select form-select-sm"
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) =>
+                  setStatusFilter(e.target.value)
+                }
                 style={{ width: 160 }}
               >
                 <option value="all">Status: All</option>
@@ -335,23 +369,53 @@ function Dashboard({ onBackToInputs }) {
                 onChange={(e) => setSortBy(e.target.value)}
                 style={{ width: 210 }}
               >
-                <option value="dateDesc">Sort: Date Newest</option>
-                <option value="dateAsc">Sort: Date Oldest</option>
-                <option value="nameAsc">Sort: Report Name A-Z</option>
-                <option value="nameDesc">Sort: Report Name Z-A</option>
-                <option value="customerAsc">Sort: Customer A-Z</option>
-                <option value="projectDesc">Sort: Project # High-Low</option>
-                <option value="projectAsc">Sort: Project # Low-High</option>
-                <option value="bidDesc">Sort: Bid Amount High-Low</option>
-                <option value="bidAsc">Sort: Bid Amount Low-High</option>
+                <option value="dateDesc">
+                  Sort: Date Newest
+                </option>
+
+                <option value="dateAsc">
+                  Sort: Date Oldest
+                </option>
+
+                <option value="nameAsc">
+                  Sort: Report Name A-Z
+                </option>
+
+                <option value="nameDesc">
+                  Sort: Report Name Z-A
+                </option>
+
+                <option value="customerAsc">
+                  Sort: Customer A-Z
+                </option>
+
+                <option value="projectDesc">
+                  Sort: Project # High-Low
+                </option>
+
+                <option value="projectAsc">
+                  Sort: Project # Low-High
+                </option>
+
+                <option value="bidDesc">
+                  Sort: Bid Amount High-Low
+                </option>
+
+                <option value="bidAsc">
+                  Sort: Bid Amount Low-High
+                </option>
               </select>
             </div>
           </div>
 
           {reportsLoading ? (
-            <div className="text-muted">Loading reports...</div>
+            <div className="text-muted">
+              Loading reports...
+            </div>
           ) : filteredReports.length === 0 ? (
-            <div className="text-muted">No reports found.</div>
+            <div className="text-muted">
+              No reports found.
+            </div>
           ) : (
             <div className="table-responsive">
               <table className="table table-sm table-striped align-middle mb-0">
@@ -360,12 +424,26 @@ function Dashboard({ onBackToInputs }) {
                     <th>Report Name</th>
                     <th>Customer</th>
                     <th>Address</th>
-                    <th style={{ width: 120 }}>Project #</th>
-                    <th style={{ width: 130 }} className="text-end">
+
+                    <th style={{ width: 120 }}>
+                      Project #
+                    </th>
+
+                    <th
+                      style={{ width: 130 }}
+                      className="text-end"
+                    >
                       Bid Amount
                     </th>
-                    <th style={{ width: 120 }}>Status</th>
-                    <th style={{ width: 130 }}>Date</th>
+
+                    <th style={{ width: 120 }}>
+                      Status
+                    </th>
+
+                    <th style={{ width: 130 }}>
+                      Date
+                    </th>
+
                     <th>Created By</th>
                     <th>Notes</th>
                   </tr>
@@ -383,17 +461,45 @@ function Dashboard({ onBackToInputs }) {
 
                     return (
                       <tr key={id}>
-                        <td>{report?.ReportName || ""}</td>
-                        <td>{report?.CustomerName || ""}</td>
-                        <td>{report?.Address || ""}</td>
-                        <td>{report?.ProjectNumber || ""}</td>
-                        <td className="text-end">
-                          {bidAmount === null ? "-" : money(bidAmount)}
+                        <td>
+                          {report?.ReportName || ""}
                         </td>
-                        <td>{getStatusLabel(report?.Status)}</td>
-                        <td>{formatDate(report?.Date ?? report?.date)}</td>
-                        <td>{report?.CreatedBy || ""}</td>
-                        <td>{report?.Notes || ""}</td>
+
+                        <td>
+                          {report?.CustomerName || ""}
+                        </td>
+
+                        <td>
+                          {report?.Address || ""}
+                        </td>
+
+                        <td>
+                          {report?.ProjectNumber || ""}
+                        </td>
+
+                        <td className="text-end">
+                          {bidAmount === null
+                            ? "-"
+                            : money(bidAmount)}
+                        </td>
+
+                        <td>
+                          {getStatusLabel(report?.Status)}
+                        </td>
+
+                        <td>
+                          {formatDate(
+                            report?.Date ?? report?.date
+                          )}
+                        </td>
+
+                        <td>
+                          {report?.CreatedBy || ""}
+                        </td>
+
+                        <td>
+                          {report?.Notes || ""}
+                        </td>
                       </tr>
                     );
                   })}
@@ -403,7 +509,8 @@ function Dashboard({ onBackToInputs }) {
           )}
 
           <div className="small text-muted mt-2">
-            This dashboard is using all rows returned by the reports route.
+            Statistics are grouped by CreatedBy email.
+            The table shows all reports returned by the API.
           </div>
         </div>
       </div>
