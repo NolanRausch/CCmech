@@ -25,7 +25,9 @@ function Dashboard({ onBackToInputs }) {
   const readBid = useCallback((report) => {
     const raw = report?.Bid ?? report?.bid;
 
-    if (raw === null || raw === undefined || raw === "") return null;
+    if (raw === null || raw === undefined || raw === "") {
+      return null;
+    }
 
     const n = Number(String(raw).replace(/[^0-9.\-]/g, ""));
 
@@ -88,7 +90,7 @@ function Dashboard({ onBackToInputs }) {
     loadReports();
   }, [loadReports]);
 
-  // Calculate a separate set of statistics for each CreatedBy email.
+  // Calculate separate statistics for each CreatedBy email.
   const statsByUser = useMemo(() => {
     const groups = new Map();
 
@@ -123,7 +125,8 @@ function Dashboard({ onBackToInputs }) {
         const projectNumbers = rows
           .map((report) => Number(report?.ProjectNumber))
           .filter(
-            (number) => Number.isFinite(number) && number > 0
+            (number) =>
+              Number.isFinite(number) && number > 0
           );
 
         return {
@@ -155,7 +158,8 @@ function Dashboard({ onBackToInputs }) {
 
           reportsWithBidCount: bidValues.length,
 
-          reportsWithoutBidCount: rows.length - bidValues.length,
+          reportsWithoutBidCount:
+            rows.length - bidValues.length,
 
           averageBidAmount: bidValues.length
             ? totalBidAmount / bidValues.length
@@ -165,18 +169,25 @@ function Dashboard({ onBackToInputs }) {
       .sort((a, b) => a.email.localeCompare(b.email));
   }, [reports, readBid]);
 
+  // Filter and sort all reports.
   const filteredReports = useMemo(() => {
     let rows = [...reports];
 
     if (statusFilter !== "all") {
       rows = rows.filter(
-        (r) => String(Number(r?.Status ?? 0)) === statusFilter
+        (r) =>
+          String(Number(r?.Status ?? 0)) === statusFilter
       );
     }
 
     rows.sort((a, b) => {
-      const aName = String(a?.ReportName ?? "").toLowerCase();
-      const bName = String(b?.ReportName ?? "").toLowerCase();
+      const aName = String(
+        a?.ReportName ?? ""
+      ).toLowerCase();
+
+      const bName = String(
+        b?.ReportName ?? ""
+      ).toLowerCase();
 
       const aCustomer = String(
         a?.CustomerName ?? ""
@@ -185,6 +196,15 @@ function Dashboard({ onBackToInputs }) {
       const bCustomer = String(
         b?.CustomerName ?? ""
       ).toLowerCase();
+
+      // CreatedBy email sorting values.
+      const aCreatedBy = String(
+        a?.CreatedBy ?? a?.createdBy ?? ""
+      ).trim().toLowerCase();
+
+      const bCreatedBy = String(
+        b?.CreatedBy ?? b?.createdBy ?? ""
+      ).trim().toLowerCase();
 
       const aDate = parseDateValue(a?.Date ?? a?.date);
       const bDate = parseDateValue(b?.Date ?? b?.date);
@@ -197,13 +217,22 @@ function Dashboard({ onBackToInputs }) {
 
       switch (sortBy) {
         case "dateAsc":
-          return aDate - bDate || aName.localeCompare(bName);
+          return (
+            aDate - bDate ||
+            aName.localeCompare(bName)
+          );
 
         case "nameAsc":
-          return aName.localeCompare(bName) || bDate - aDate;
+          return (
+            aName.localeCompare(bName) ||
+            bDate - aDate
+          );
 
         case "nameDesc":
-          return bName.localeCompare(aName) || bDate - aDate;
+          return (
+            bName.localeCompare(aName) ||
+            bDate - aDate
+          );
 
         case "customerAsc":
           return (
@@ -212,25 +241,60 @@ function Dashboard({ onBackToInputs }) {
           );
 
         case "projectDesc":
-          return bProject - aProject || bDate - aDate;
+          return (
+            bProject - aProject ||
+            bDate - aDate
+          );
 
         case "projectAsc":
-          return aProject - bProject || bDate - aDate;
+          return (
+            aProject - bProject ||
+            bDate - aDate
+          );
 
         case "bidDesc":
-          return bBid - aBid || bDate - aDate;
+          return (
+            bBid - aBid ||
+            bDate - aDate
+          );
 
         case "bidAsc":
-          return aBid - bBid || bDate - aDate;
+          return (
+            aBid - bBid ||
+            bDate - aDate
+          );
+
+        // NEW: Sort by creator email A-Z.
+        case "createdByAsc":
+          return (
+            aCreatedBy.localeCompare(bCreatedBy) ||
+            bDate - aDate
+          );
+
+        // NEW: Sort by creator email Z-A.
+        case "createdByDesc":
+          return (
+            bCreatedBy.localeCompare(aCreatedBy) ||
+            bDate - aDate
+          );
 
         case "dateDesc":
         default:
-          return bDate - aDate || aName.localeCompare(bName);
+          return (
+            bDate - aDate ||
+            aName.localeCompare(bName)
+          );
       }
     });
 
     return rows;
-  }, [reports, statusFilter, sortBy, parseDateValue, readBid]);
+  }, [
+    reports,
+    statusFilter,
+    sortBy,
+    parseDateValue,
+    readBid,
+  ]);
 
   return (
     <>
@@ -245,7 +309,9 @@ function Dashboard({ onBackToInputs }) {
             onClick={loadReports}
             disabled={reportsLoading}
           >
-            {reportsLoading ? "Refreshing..." : "Refresh"}
+            {reportsLoading
+              ? "Refreshing..."
+              : "Refresh"}
           </button>
 
           <button
@@ -273,21 +339,41 @@ function Dashboard({ onBackToInputs }) {
 
       {statsByUser.map((stats) => (
         <section key={stats.email} className="mb-4">
-          <h6 className="mb-3">{stats.email}</h6>
+          <h6 className="mb-3">
+            {stats.email}
+          </h6>
 
           <div className="row g-3 mb-3">
             {[
-              ["Total Reports", stats.totalReports],
-              ["Bid Status", stats.bidCount],
-              ["Active", stats.activeCount],
-              ["Lost", stats.lostCount],
-              ["Complete", stats.completeCount],
+              [
+                "Total Reports",
+                stats.totalReports,
+              ],
+              [
+                "Bid Status",
+                stats.bidCount,
+              ],
+              [
+                "Active",
+                stats.activeCount,
+              ],
+              [
+                "Lost",
+                stats.lostCount,
+              ],
+              [
+                "Complete",
+                stats.completeCount,
+              ],
               [
                 "Highest Project #",
                 stats.highestProjectNumber || "-",
               ],
             ].map(([label, value]) => (
-              <div className="col-md-2" key={label}>
+              <div
+                className="col-md-2"
+                key={label}
+              >
                 <div className="card h-100">
                   <div className="card-body">
                     <div className="small text-muted">
@@ -322,7 +408,10 @@ function Dashboard({ onBackToInputs }) {
                 stats.reportsWithoutBidCount,
               ],
             ].map(([label, value]) => (
-              <div className="col-md-3" key={label}>
+              <div
+                className="col-md-3"
+                key={label}
+              >
                 <div className="card h-100">
                   <div className="card-body">
                     <div className="small text-muted">
@@ -345,7 +434,9 @@ function Dashboard({ onBackToInputs }) {
       <div className="card">
         <div className="card-body">
           <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-            <h6 className="mb-0">All Reports</h6>
+            <h6 className="mb-0">
+              All Reports
+            </h6>
 
             <div className="d-flex gap-2">
               <select
@@ -356,18 +447,34 @@ function Dashboard({ onBackToInputs }) {
                 }
                 style={{ width: 160 }}
               >
-                <option value="all">Status: All</option>
-                <option value="0">Status: Bid</option>
-                <option value="1">Status: Active</option>
-                <option value="2">Status: Lost</option>
-                <option value="3">Status: Complete</option>
+                <option value="all">
+                  Status: All
+                </option>
+
+                <option value="0">
+                  Status: Bid
+                </option>
+
+                <option value="1">
+                  Status: Active
+                </option>
+
+                <option value="2">
+                  Status: Lost
+                </option>
+
+                <option value="3">
+                  Status: Complete
+                </option>
               </select>
 
               <select
                 className="form-select form-select-sm"
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                style={{ width: 210 }}
+                onChange={(e) =>
+                  setSortBy(e.target.value)
+                }
+                style={{ width: 230 }}
               >
                 <option value="dateDesc">
                   Sort: Date Newest
@@ -404,6 +511,16 @@ function Dashboard({ onBackToInputs }) {
                 <option value="bidAsc">
                   Sort: Bid Amount Low-High
                 </option>
+
+                {/* NEW: CreatedBy sorting options */}
+
+                <option value="createdByAsc">
+                  Sort: Created By A-Z
+                </option>
+
+                <option value="createdByDesc">
+                  Sort: Created By Z-A
+                </option>
               </select>
             </div>
           </div>
@@ -421,9 +538,17 @@ function Dashboard({ onBackToInputs }) {
               <table className="table table-sm table-striped align-middle mb-0">
                 <thead>
                   <tr>
-                    <th>Report Name</th>
-                    <th>Customer</th>
-                    <th>Address</th>
+                    <th>
+                      Report Name
+                    </th>
+
+                    <th>
+                      Customer
+                    </th>
+
+                    <th>
+                      Address
+                    </th>
 
                     <th style={{ width: 120 }}>
                       Project #
@@ -444,8 +569,13 @@ function Dashboard({ onBackToInputs }) {
                       Date
                     </th>
 
-                    <th>Created By</th>
-                    <th>Notes</th>
+                    <th>
+                      Created By
+                    </th>
+
+                    <th>
+                      Notes
+                    </th>
                   </tr>
                 </thead>
 
@@ -494,7 +624,9 @@ function Dashboard({ onBackToInputs }) {
                         </td>
 
                         <td>
-                          {report?.CreatedBy || ""}
+                          {report?.CreatedBy ??
+                            report?.createdBy ??
+                            ""}
                         </td>
 
                         <td>
